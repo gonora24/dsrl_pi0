@@ -1,6 +1,11 @@
 #!/bin/bash
+module load devel/miniforge
+conda activate dsrl_pi0
 proj_name=DSRL_pi0_Aloha
 device_id=0
+
+export PYTHONPATH="${PYTHONPATH}:/pfs/data6/home/ka/ka_anthropomatik/ka_eu3660/projects/dsrl_pi0/"
+export PYTHONPATH=$PYTHONPATH:/pfs/data6/home/ka/ka_anthropomatik/ka_eu3660/projects/dsrl_pi0/LIBERO
 
 export DISPLAY=:0
 export MUJOCO_GL=egl

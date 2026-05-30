@@ -25,6 +25,7 @@ from jaxrl2.utils.wandb_logger import WandBLogger, create_exp_name
 import tempfile
 from functools import partial
 from examples.train_utils_sim import trajwise_alternating_training_loop
+from jaxrl2.utils.launch_util import get_full_config_dict, print_full_config
 import tensorflow as tf
 from jax.experimental.compilation_cache import compilation_cache
 
@@ -102,7 +103,7 @@ def main(variant):
     else:
         expname = create_exp_name(variant.prefix, seed=variant.seed)
    
-    outputdir = os.path.join(os.environ['EXP'], expname)
+    outputdir = os.path.abspath(os.path.join(os.environ['EXP'], expname))
     variant.outputdir = outputdir
     if not os.path.exists(outputdir):
         os.makedirs(outputdir)
@@ -110,8 +111,8 @@ def main(variant):
     
     if variant.env == 'libero':
         benchmark_dict = benchmark.get_benchmark_dict()
-        task_suite = benchmark_dict["libero_90"]()
-        task_id = 57
+        task_suite = benchmark_dict[variant.libero_suite]() # originally hardcoded: libero_90
+        task_id = variant.libero_task_id # originally hardcoded: 57
         task = task_suite.get_task(task_id)
         env, task_description = _get_libero_env(task, 256, variant.seed)
         eval_env = env
@@ -145,16 +146,57 @@ def main(variant):
     
 
     if variant.env == 'libero':
-        config = openpi_config.get_config("pi0_libero")
-        checkpoint_dir = download.maybe_download("s3://openpi-assets/checkpoints/pi0_libero")
+        pi0_ckpt = getattr(variant, "pi0_checkpoint", "openpi")
+        if pi0_ckpt == "openpi":
+            checkpoint_dir = download.maybe_download("s3://openpi-assets/checkpoints/pi0_libero")
+        elif pi0_ckpt == "rlinf_hf_long":
+            from huggingface_hub import snapshot_download
+            from openpi.shared import transformers_rlinf_patch
+
+            hf_cache = pathlib.Path(download.get_cache_dir()) / "hf" / "RLinf_RLinf-Pi0-LIBERO-Long-SFT"
+            checkpoint_dir = pathlib.Path(
+                snapshot_download("RLinf/RLinf-Pi0-LIBERO-Long-SFT", local_dir=str(hf_cache))
+            )
+            # RLinf Pi0 needs patched transformers *before* ``openpi.training.config`` imports them.
+            transformers_rlinf_patch.ensure_rlinf_transformers_patched()
+            transformers_rlinf_patch.purge_transformers_imports()
+            os.environ.setdefault("OPENPI_DISABLE_TORCH_COMPILE", "1")
+        elif pi0_ckpt == "rlinf_hf_goalSpatial":
+            from huggingface_hub import snapshot_download
+            from openpi.shared import transformers_rlinf_patch
+
+            hf_cache = pathlib.Path(download.get_cache_dir()) / "hf" / "RLinf_RLinf-Pi0-LIBERO-Spatial-Object-Goal-SFT"
+            checkpoint_dir = pathlib.Path(
+                snapshot_download("RLinf/RLinf-Pi0-LIBERO-Spatial-Object-Goal-SFT", local_dir=str(hf_cache))
+            )
+            # RLinf Pi0 needs patched transformers *before* ``openpi.training.config`` imports them.
+            transformers_rlinf_patch.ensure_rlinf_transformers_patched()
+            transformers_rlinf_patch.purge_transformers_imports()
+            os.environ.setdefault("OPENPI_DISABLE_TORCH_COMPILE", "1")
+        else:
+            checkpoint_dir = pathlib.Path(pi0_ckpt).expanduser().resolve()
+            if not checkpoint_dir.is_dir():
+                raise FileNotFoundError(f"--pi0_checkpoint path is not a directory: {checkpoint_dir}")
     elif variant.env == 'aloha_cube':
-        config = openpi_config.get_config("pi0_aloha_sim")
         checkpoint_dir = download.maybe_download("s3://openpi-assets/checkpoints/pi0_aloha_sim")
     else:
         raise NotImplementedError()
+
+    if variant.env == 'libero':
+        config = openpi_config.get_config("pi0_libero")
+    else:
+        config = openpi_config.get_config("pi0_aloha_sim")
+
     agent_dp = policy_config.create_trained_policy(config, checkpoint_dir)
-    print("Loaded pi0 policy from %s", checkpoint_dir)
+    print(f"Loaded pi0 policy from {checkpoint_dir}", flush=True)
     agent = PixelSACLearner(variant.seed, sample_obs, sample_action, **kwargs)
+
+    config_extra = {
+        "pi0_checkpoint_dir": str(checkpoint_dir),
+        "openpi_config": config.name,
+        "online_buffer_size": variant.max_steps // variant.multi_grad_step,
+    }
+    print_full_config(variant, agent=agent, extra=config_extra)
 
     online_buffer_size = variant.max_steps  // variant.multi_grad_step
     online_replay_buffer = ReplayBuffer(dummy_env.observation_space, dummy_env.action_space, int(online_buffer_size))

@@ -98,7 +98,7 @@ class WandBLogger(object):
                 team = wandb_config['WANDB_TEAM'] if wandb_config['WANDB_TEAM'] != '' else None
             except:
                 print('wandb_config.py not found, using default wandb config')
-            os.environ["WANDB_MODE"] = "run"
+            os.environ["WANDB_MODE"] = "online"
             wandb.init(
                 config=variant,
                 project=project,

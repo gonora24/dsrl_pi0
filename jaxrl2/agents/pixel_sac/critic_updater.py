@@ -2,6 +2,7 @@ from typing import Dict, Tuple
 
 import jax
 import jax.numpy as jnp
+import optax
 from flax.training.train_state import TrainState
 
 from jaxrl2.data.dataset import DatasetDict
@@ -52,6 +53,7 @@ def update_critic(
         }
 
     grads, info = jax.grad(critic_loss_fn, has_aux=True)(critic.params)
+    info = {**info, 'critic_grad_norm': optax.global_norm(grads)}
     new_critic = critic.apply_gradients(grads=grads)
 
     return new_critic, info

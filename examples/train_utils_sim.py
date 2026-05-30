@@ -2,6 +2,7 @@ from tqdm import tqdm
 import numpy as np
 import wandb
 import jax
+import flax.traverse_util
 from openpi_client import image_tools
 import math
 import PIL
@@ -88,6 +89,43 @@ def obs_to_qpos(obs, variant):
         raise NotImplementedError()
     return qpos
 
+
+def _param_count(params):
+    return sum(int(x.size) for x in jax.tree_util.tree_leaves(params))
+
+
+def _print_param_tree(name, params):
+    flat = flax.traverse_util.flatten_dict(jax.device_get(params), sep="/")
+    print(f"\n{name} parameter tree ({_param_count(params):,} scalars):")
+    for path, arr in sorted(flat.items()):
+        print(f"  {path}: shape={arr.shape}, dtype={arr.dtype}")
+
+
+def print_pre_update_summary(variant, agent):
+    from jaxrl2.utils.launch_util import print_full_config
+
+    print("=" * 80)
+    print("PRE-UPDATE SUMMARY (first online grad step)")
+    print("=" * 80)
+    print_full_config(variant, agent=agent)
+
+    alpha = float(agent._temp.apply_fn({"params": jax.device_get(agent._temp.params)}))
+    print(f"\n[initial temperature alpha] {alpha}")
+
+    for name, state in [
+        ("actor", agent._actor),
+        ("critic", agent._critic),
+        ("temperature", agent._temp),
+    ]:
+        print(f"\n[{name}] train_state.step = {int(state.step)}")
+        _print_param_tree(name, state.params)
+        if getattr(state, "batch_stats", None) is not None:
+            _print_param_tree(f"{name}/batch_stats", state.batch_stats)
+
+    _print_param_tree("target_critic", agent._target_critic_params)
+    print("=" * 80)
+
+
 def trajwise_alternating_training_loop(variant, agent, env, eval_env, online_replay_buffer, replay_buffer, wandb_logger,
                                        perform_control_evals=True, shard_fn=None, agent_dp=None):
     replay_buffer_iterator = replay_buffer.get_iterator(variant.batch_size)
@@ -99,7 +137,9 @@ def trajwise_alternating_training_loop(variant, agent, env, eval_env, online_rep
     wandb_logger.log({'num_online_samples': 0}, step=i)
     wandb_logger.log({'num_online_trajs': 0}, step=i)
     wandb_logger.log({'env_steps': 0}, step=i)
-    
+
+    printed_pre_update_summary = False
+
     with tqdm(total=variant.max_steps, initial=0) as pbar:
         while i <= variant.max_steps:
             traj = collect_traj(variant, agent, env, i, agent_dp)
@@ -116,6 +156,9 @@ def trajwise_alternating_training_loop(variant, agent, env, eval_env, online_rep
                 num_gradsteps = len(traj["rewards"])*variant.multi_grad_step
 
             if len(online_replay_buffer) > variant.start_online_updates:
+                if not printed_pre_update_summary:
+                    print_pre_update_summary(variant, agent)
+                    printed_pre_update_summary = True
                 for _ in range(num_gradsteps):
                     # perform first visualization before updating
                     if i == 0:

@@ -14,6 +14,7 @@ from jaxrl2.utils.wandb_logger import WandBLogger, create_exp_name
 import tempfile
 from functools import partial
 from examples.train_utils_real import trajwise_alternating_training_loop
+from jaxrl2.utils.launch_util import get_full_config_dict, print_full_config
 import tensorflow as tf
 from jax.experimental.compilation_cache import compilation_cache
 from openpi_client import websocket_client_policy as _websocket_client_policy

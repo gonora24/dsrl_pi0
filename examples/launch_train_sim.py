@@ -25,6 +25,18 @@ if __name__ == '__main__':
     parser.add_argument('--multi_grad_step', default=1, help='Number of graident steps to take per environment step, aka UTD', type=int)
     parser.add_argument('--resize_image', default=-1, help='the size of image if need resizing', type=int)
     parser.add_argument('--query_freq', default=-1, help='query frequency', type=int)
+    parser.add_argument('--libero_suite', default="libero_90", help='libero task suite', type=str)
+    parser.add_argument('--libero_task_id', default=57, help='which libero task in suite', type=int)
+    parser.add_argument(
+        '--pi0_checkpoint',
+        default='openpi',
+        type=str,
+        help=(
+            "Pi0 weights for LIBERO: 'openpi' (Orbax, s3://openpi-assets/checkpoints/pi0_libero), "
+            "'rlinf_hf' (download RLinf/RLinf-Pi0-LIBERO-Long-SFT from Hugging Face, PyTorch safetensors), "
+            "or a local directory containing either Orbax 'params/' or 'model.safetensors'."
+        ),
+    )
     
     train_args_dict = dict(
         actor_lr=1e-4,

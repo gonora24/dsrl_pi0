@@ -2,6 +2,7 @@ from audioop import cross
 from typing import Dict, Tuple
 
 import jax
+import optax
 import jax.numpy as jnp
 from flax.training.train_state import TrainState
 
@@ -68,6 +69,7 @@ def update_actor(key: PRNGKey, actor: TrainState, critic: TrainState,
         return actor_loss, (things_to_log, new_model_state)
 
     grads, (info, new_model_state) = jax.grad(actor_loss_fn, has_aux=True)(actor.params)
+    info = {**info, 'actor_grad_norm': optax.global_norm(grads)}
     
     if 'batch_stats' in new_model_state:
         new_actor = actor.apply_gradients(grads=grads, batch_stats=new_model_state['batch_stats'])
