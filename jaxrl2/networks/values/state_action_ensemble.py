@@ -11,6 +11,7 @@ class StateActionEnsemble(nn.Module):
     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
     num_qs: int = 2
     use_action_sep: bool = False
+    use_chunky_actor_critic: bool = False
 
     @nn.compact
     def __call__(self, states, actions, training: bool = False):
@@ -22,8 +23,10 @@ class StateActionEnsemble(nn.Module):
                              in_axes=None,
                              out_axes=0,
                              axis_size=self.num_qs)
-        qs = VmapCritic(self.hidden_dims,
-                        activations=self.activations,
-                        use_action_sep=self.use_action_sep)(states, actions,
-                                                      training)
+        qs = VmapCritic(
+            self.hidden_dims,
+            activations=self.activations,
+            use_action_sep=self.use_action_sep,
+            use_chunky_actor_critic=self.use_chunky_actor_critic,
+        )(states, actions, training)
         return qs

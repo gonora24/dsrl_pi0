@@ -2,7 +2,7 @@
 #SBATCH --ntasks=1
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1 
-#SBATCH --job-name=dsrl_pi0_libero_10_task8_rlinf_checkpoint
+#SBATCH --job-name=dsrl_pi0_libero_10_task9
 
 module load devel/miniforge
 conda deactivate
@@ -13,6 +13,8 @@ export WANDB_USERNAME='noragorhan'
 export WANDB_TEAM='noragorhan-karlsruhe-institute-of-technology'
 proj_name=DSRL_pi0_Libero
 device_id=0
+wandb_mode=online  # online or offline
+export WANDB_MODE=${wandb_mode}
 
 export PYTHONPATH="${PYTHONPATH}:/pfs/data6/home/ka/ka_anthropomatik/ka_eu3660/projects/dsrl_pi0/"
 export PYTHONPATH=$PYTHONPATH:/pfs/data6/home/ka/ka_anthropomatik/ka_eu3660/projects/dsrl_pi0/LIBERO
@@ -34,7 +36,7 @@ python3 examples/launch_train_sim.py \
 --algorithm pixel_sac \
 --env libero \
 --prefix dsrl_pi0_libero \
---suffix libero_10_task8_rlinfchkp \
+--suffix libero_10_task9_rlinfchkp \
 --wandb_project ${proj_name} \
 --batch_size 256 \
 --discount 0.999 \
@@ -51,8 +53,9 @@ python3 examples/launch_train_sim.py \
 --query_freq 20 \
 --hidden_dims 128 \
 --libero_suite "libero_10" \
---libero_task_id 8 \
---pi0_checkpoint rlinf_hf_long \
+--libero_task_id 9 \
+--pi0_checkpoint openpi \
+--chunk_reward 0 \
+--use_chunky_actor_critic 0 \
 
 ## batch size 256, multi grad step 20, hidden dims 50
-## wandb manually set offline in wandb_logger class

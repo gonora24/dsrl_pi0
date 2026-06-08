@@ -13,7 +13,7 @@ def update_critic(
         key: PRNGKey, actor: TrainState, critic: TrainState,
         target_critic: TrainState, temp: TrainState, batch: DatasetDict,
         discount: float, backup_entropy: bool = False,
-        critic_reduction: str = 'min') -> Tuple[TrainState, Dict[str, float]]:
+        critic_reduction: str = 'min', chunk_reward: bool = False) -> Tuple[TrainState, Dict[str, float]]:
     dist = actor.apply_fn({'params': actor.params}, batch['next_observations'])
     next_actions, next_log_probs = dist.sample_and_log_prob(seed=key)
     next_qs = target_critic.apply_fn({'params': target_critic.params},
@@ -25,10 +25,26 @@ def update_critic(
     else:
         raise NotImplemented()
 
-    target_q = batch['rewards'] + batch["discount"] * batch['masks'] * next_q
+    rewards = batch['rewards']
+    if chunk_reward:
+        chunk_size = rewards.shape[-1]
+        exponents = jnp.arange(chunk_size, dtype=jnp.float32)
+        gamma_powers = discount ** exponents
+        rewards_for_bootstrap = jnp.sum(rewards * gamma_powers, axis=-1)
+        bootstrap_discount = discount ** chunk_size
+        bootstrap_mask = jnp.logical_not(jnp.any(batch['terminations'], axis=-1))
+    else:
+        rewards_for_bootstrap = rewards
+        bootstrap_discount = batch['discount']
+        bootstrap_mask = batch['masks']
+
+    target_q = (
+        rewards_for_bootstrap
+        + bootstrap_discount * bootstrap_mask * next_q
+    )
 
     if backup_entropy:
-        target_q -= batch["discount"] * batch['masks'] * temp.apply_fn(
+        target_q -= bootstrap_discount * bootstrap_mask * temp.apply_fn(
             {'params': temp.params}) * next_log_probs
 
     def critic_loss_fn(

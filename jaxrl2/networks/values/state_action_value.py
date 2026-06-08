@@ -21,16 +21,24 @@ PrecisionLike = Union[None, str, jax.lax.Precision, Tuple[str, str],
 
 default_kernel_init = nn.initializers.lecun_normal()
 
+def _prepare_critic_actions(actions: jnp.ndarray, use_chunky_actor_critic: bool) -> jnp.ndarray:
+    if actions.ndim == 3 and not use_chunky_actor_critic:
+        return actions[:, 0, :]
+    return actions
+
+
 class StateActionValue(nn.Module):
     hidden_dims: Sequence[int]
     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
     use_action_sep: bool = False
+    use_chunky_actor_critic: bool = False
 
     @nn.compact
     def __call__(self,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
                  training: bool = False):
+        actions = _prepare_critic_actions(actions, self.use_chunky_actor_critic)
         inputs = {'states': observations, 'actions': actions}
         if self.use_action_sep:
             critic = MLPActionSep(

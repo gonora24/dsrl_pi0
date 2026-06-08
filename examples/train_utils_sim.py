@@ -24,6 +24,49 @@ def _quat2axisangle(quat):
 
     return (quat[:3] * 2.0 * math.acos(quat[3])) / den
 
+def _pad_chunk_rewards(rewards, size, pad_value=0.0):
+    if len(rewards) >= size:
+        return np.asarray(rewards[:size], dtype=np.float32)
+    return np.concatenate(
+        [np.asarray(rewards, dtype=np.float32), np.full(size - len(rewards), pad_value, dtype=np.float32)]
+    )
+
+
+def _pad_chunk_terminations(terminations, size):
+    if len(terminations) >= size:
+        return np.asarray(terminations[:size], dtype=np.bool_)
+    padded = np.zeros(size, dtype=np.bool_)
+    padded[:len(terminations)] = np.asarray(terminations, dtype=np.bool_)
+    if len(terminations) > 0:
+        padded[len(terminations):] = True
+    return padded
+
+
+def _finalize_chunk_rewards(chunk_rewards, chunk_terminations, query_frequency):
+    rewards = np.stack(
+        [_pad_chunk_rewards(r, query_frequency) for r in chunk_rewards],
+        axis=0,
+    )
+    terminations = np.stack(
+        [_pad_chunk_terminations(t, query_frequency) for t in chunk_terminations],
+        axis=0,
+    )
+    masks = np.logical_not(terminations.any(axis=-1)).astype(np.float32)
+    return rewards, terminations, masks
+
+
+def _prepare_pi0_noise(actions_noise, agent, pi0_action_horizon):
+    """Reshape SAC noise and pad to pi0's inference horizon if needed."""
+    actions_noise = np.reshape(actions_noise, agent.action_chunk_shape)
+    noise = actions_noise[None]
+    if noise.shape[1] < pi0_action_horizon:
+        noise_repeat = np.repeat(
+            noise[:, -1:, :], pi0_action_horizon - noise.shape[1], axis=1
+        )
+        noise = np.concatenate([noise, noise_repeat], axis=1)
+    return noise
+
+
 def obs_to_img(obs, variant):
     '''
     Convert raw observation to resized image for DSRL actor/critic
@@ -210,6 +253,9 @@ def add_online_data_to_buffer(variant, traj, online_replay_buffer):
     episode_len = len(actions)
     rewards = np.array(traj['rewards'])
     masks = np.array(traj['masks'])
+    terminations = traj.get('terminations')
+    if terminations is not None:
+        terminations = np.array(terminations)
 
     for t in range(episode_len):
         obs = traj['observations'][t]
@@ -230,6 +276,8 @@ def add_online_data_to_buffer(variant, traj, online_replay_buffer):
             masks=masks[t],
             discount=variant.discount ** discount_horizon
         )
+        if terminations is not None:
+            insert_dict['terminations'] = terminations[t]
         online_replay_buffer.insert(insert_dict)
     online_replay_buffer.increment_traj_counter()
 
@@ -237,6 +285,7 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
     query_frequency = variant.query_freq
     max_timesteps = variant.max_timesteps
     env_max_reward = variant.env_max_reward
+    chunk_reward = bool(variant.get('chunk_reward', 0))
 
     agent._rng, rng = jax.random.split(agent._rng)
     
@@ -246,9 +295,13 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
         obs, _ = env.reset()
     
     image_list = [] # for visualization
-    rewards = []
+    env_rewards = []
     action_list = []
     obs_list = []
+    chunk_rewards = []
+    chunk_terminations = []
+    current_chunk_rewards = []
+    current_chunk_terminations = []
 
     for t in tqdm(range(max_timesteps)):
         curr_image = obs_to_img(obs, variant)
@@ -272,20 +325,19 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
             rng, key = jax.random.split(rng)
             obs_pi_zero = obs_to_pi_zero_input(obs, variant)
             if i == 0:
-                # for initial round of data collection, we sample from standard gaussian noise
                 noise = jax.random.normal(key, (1, *agent.action_chunk_shape))
-                noise_repeat = jax.numpy.repeat(noise[:, -1:, :], 50 - noise.shape[1], axis=1)
-                noise = jax.numpy.concatenate([noise, noise_repeat], axis=1)
+                if noise.shape[1] < variant.pi0_action_horizon:
+                    noise_repeat = jax.numpy.repeat(
+                        noise[:, -1:, :], variant.pi0_action_horizon - noise.shape[1], axis=1
+                    )
+                    noise = jax.numpy.concatenate([noise, noise_repeat], axis=1)
                 actions_noise = noise[0, :agent.action_chunk_shape[0], :]
             else:
-                # sac agent predicts the noise for diffusion model
                 actions_noise = agent.sample_actions(obs_dict)
-                actions_noise = np.reshape(actions_noise, agent.action_chunk_shape)
-                noise = np.repeat(actions_noise[-1:, :], 50 - actions_noise.shape[0], axis=0)
-                noise = jax.numpy.concatenate([actions_noise, noise], axis=0)[None]
+                noise = _prepare_pi0_noise(actions_noise, agent, variant.pi0_action_horizon)
             
             actions = agent_dp.infer(obs_pi_zero, noise=noise)["actions"]
-            action_list.append(actions_noise)
+            action_list.append(np.reshape(actions_noise, agent.action_chunk_shape))
             obs_list.append(obs_dict)
      
         action_t = actions[t % query_frequency]
@@ -294,11 +346,21 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
         elif 'aloha' in variant.env:
             obs, reward, terminated, truncated, _ = env.step(action_t)
             done = terminated or truncated
+
+        if chunk_reward:
+            current_chunk_rewards.append(float(reward))
+            current_chunk_terminations.append(bool(done))
             
-        rewards.append(reward)
+        env_rewards.append(reward)
         image_list.append(curr_image)
         if done:
             break
+
+        if chunk_reward and (t + 1) % query_frequency == 0:
+            chunk_rewards.append(np.array(current_chunk_rewards, dtype=np.float32))
+            chunk_terminations.append(np.array(current_chunk_terminations, dtype=np.bool_))
+            current_chunk_rewards = []
+            current_chunk_terminations = []
 
     # add last observation
     curr_image = obs_to_img(obs, variant)
@@ -311,11 +373,30 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
     image_list.append(curr_image)
     
     # per episode
-    rewards = np.array(rewards)
-    episode_return = np.sum(rewards[rewards!=None])
+    env_rewards = np.array(env_rewards)
+    episode_return = np.sum(env_rewards[env_rewards!=None])
     is_success = (reward == env_max_reward)
     print(f'Rollout Done: {episode_return=}, Success: {is_success}')
-    
+
+    if chunk_reward:
+        if len(current_chunk_rewards) > 0:
+            chunk_rewards.append(np.array(current_chunk_rewards, dtype=np.float32))
+            chunk_terminations.append(np.array(current_chunk_terminations, dtype=np.bool_))
+        rewards, terminations, masks = _finalize_chunk_rewards(
+            chunk_rewards, chunk_terminations, query_frequency
+        )
+        traj = {
+            'observations': obs_list,
+            'actions': action_list,
+            'rewards': rewards,
+            'terminations': terminations,
+            'masks': masks,
+            'is_success': is_success,
+            'episode_return': episode_return,
+            'images': image_list,
+            'env_steps': t + 1,
+        }
+        return traj
     
     '''
     We use sparse -1/0 reward to train the SAC agent.
@@ -388,9 +469,7 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
                     noise = jax.random.normal(rng, (1, 50, 32))
                 else:
                     actions_noise = agent.sample_actions(obs_dict)
-                    actions_noise = np.reshape(actions_noise, agent.action_chunk_shape)
-                    noise = np.repeat(actions_noise[-1:, :], 50 - actions_noise.shape[0], axis=0)
-                    noise = jax.numpy.concatenate([actions_noise, noise], axis=0)[None]
+                    noise = _prepare_pi0_noise(actions_noise, agent, variant.pi0_action_horizon)
                     
                 actions = agent_dp.infer(obs_pi_zero, noise=noise)["actions"]
               

@@ -38,12 +38,13 @@ from jaxrl2.utils.target_update import soft_target_update
 class TrainState(train_state.TrainState):
     batch_stats: Any
 
-@functools.partial(jax.jit, static_argnames=('critic_reduction', 'color_jitter',  'aug_next', 'num_cameras'))
+@functools.partial(jax.jit, static_argnames=('critic_reduction', 'color_jitter',  'aug_next', 'num_cameras', 'chunk_reward'))
 def _update_jit(
     rng: PRNGKey, actor: TrainState, critic: TrainState,
     target_critic_params: Params, temp: TrainState, batch: TrainState,
     discount: float, tau: float, target_entropy: float,
     critic_reduction: str, color_jitter: bool, aug_next: bool, num_cameras: int,
+    chunk_reward: bool,
 ) -> Tuple[PRNGKey, TrainState, TrainState, Params, TrainState, Dict[str,float]]:
     aug_pixels = batch['observations']['pixels']
     aug_next_pixels = batch['next_observations']['pixels']
@@ -79,7 +80,9 @@ def _update_jit(
     
     key, rng = jax.random.split(rng)
     target_critic = critic.replace(params=target_critic_params)
-    new_critic, critic_info = update_critic(key, actor, critic, target_critic, temp, batch, discount, critic_reduction=critic_reduction)
+    new_critic, critic_info = update_critic(
+        key, actor, critic, target_critic, temp, batch, discount,
+        critic_reduction=critic_reduction, chunk_reward=chunk_reward)
     new_target_critic_params = soft_target_update(new_critic.params, target_critic_params, tau)
     
     key, rng = jax.random.split(rng)
@@ -123,7 +126,11 @@ class PixelSACLearner(Agent):
                  num_qs: int = 2,
                  target_entropy: float = None,
                  action_magnitude: float = 1.0,
-                 num_cameras: int = 1
+                 num_cameras: int = 1,
+                 chunk_reward: bool = False,
+                 use_chunky_actor_critic: bool = False,
+                 pi0_action_horizon: int = 50,
+                 dsrl_action_dim: int = 32,
                  ):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1812.05905
@@ -132,13 +139,24 @@ class PixelSACLearner(Agent):
         self.aug_next=aug_next
         self.color_jitter = color_jitter
         self.num_cameras = num_cameras
-
-        self.action_dim = np.prod(actions.shape[-2:])
-        self.action_chunk_shape = actions.shape[-2:]
+        self.use_chunky_actor_critic = use_chunky_actor_critic
+        self.dsrl_action_dim = dsrl_action_dim
+        self.pi0_action_horizon = pi0_action_horizon
+        if use_chunky_actor_critic:
+            self.action_horizon = pi0_action_horizon
+            self.action_chunk_shape = (pi0_action_horizon, dsrl_action_dim)
+            self.action_dim = dsrl_action_dim * pi0_action_horizon
+            policy_action_horizon = pi0_action_horizon
+        else:
+            self.action_horizon = 1
+            self.action_chunk_shape = (1, dsrl_action_dim)
+            self.action_dim = dsrl_action_dim
+            policy_action_horizon = 1
 
         self.tau = tau
         self.discount = discount
         self.critic_reduction = critic_reduction
+        self.chunk_reward = chunk_reward
 
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key, temp_key = jax.random.split(rng, 4)
@@ -172,7 +190,15 @@ class PixelSACLearner(Agent):
         if len(hidden_dims) == 1:
             hidden_dims = (hidden_dims[0], hidden_dims[0], hidden_dims[0])
         
-        policy_def = LearnedStdTanhNormalPolicy(hidden_dims, self.action_dim, dropout_rate=dropout_rate, low=-action_magnitude, high=action_magnitude)
+        policy_def = LearnedStdTanhNormalPolicy(
+            hidden_dims,
+            self.action_dim,
+            dropout_rate=dropout_rate,
+            low=-action_magnitude,
+            high=action_magnitude,
+            action_horizon=policy_action_horizon,
+            dsrl_action_dim=dsrl_action_dim,
+        )
 
         actor_def = PixelMultiplexer(encoder=encoder_def,
                                      network=policy_def,
@@ -189,7 +215,11 @@ class PixelSACLearner(Agent):
                                   tx=optax.adam(learning_rate=actor_lr),
                                   batch_stats=actor_batch_stats)
 
-        critic_def = StateActionEnsemble(hidden_dims, num_qs=num_qs)
+        critic_def = StateActionEnsemble(
+            hidden_dims,
+            num_qs=num_qs,
+            use_chunky_actor_critic=use_chunky_actor_critic,
+        )
         critic_def = PixelMultiplexer(encoder=encoder_def,
                                       network=critic_def,
                                       latent_dim=latent_dim,
@@ -226,12 +256,14 @@ class PixelSACLearner(Agent):
         else:
             self.target_entropy = float(target_entropy)
         print(f'target_entropy: {self.target_entropy}')
+        print(f'use_chunky_actor_critic: {self.use_chunky_actor_critic}')
+        print(f'action_chunk_shape: {self.action_chunk_shape}')
         print(self.critic_reduction)
         
 
     def update(self, batch: FrozenDict) -> Dict[str, float]:
         new_rng, new_actor, new_critic, new_target_critic, new_temp, info = _update_jit(
-            self._rng, self._actor, self._critic, self._target_critic_params, self._temp, batch, self.discount, self.tau, self.target_entropy, self.critic_reduction, self.color_jitter, self.aug_next, self.num_cameras
+            self._rng, self._actor, self._critic, self._target_critic_params, self._temp, batch, self.discount, self.tau, self.target_entropy, self.critic_reduction, self.color_jitter, self.aug_next, self.num_cameras, self.chunk_reward
             )
 
         self._rng = new_rng
@@ -254,6 +286,8 @@ class PixelSACLearner(Agent):
             next_observations = trajs['next_observations'][itraj]
             actions = trajs['actions'][itraj]
             rewards = trajs['rewards'][itraj]
+            if getattr(rewards, 'ndim', 1) > 1:
+                rewards = rewards.sum(axis=-1)
             masks = trajs['masks'][itraj]
 
             q_pred = []

@@ -25,6 +25,8 @@ if __name__ == '__main__':
     parser.add_argument('--multi_grad_step', default=1, help='Number of graident steps to take per environment step, aka UTD', type=int)
     parser.add_argument('--resize_image', default=-1, help='the size of image if need resizing', type=int)
     parser.add_argument('--query_freq', default=-1, help='query frequency', type=int)
+    parser.add_argument('--chunk_reward', default=0, help='sum discounted per-step env rewards within each action chunk for critic bootstrap (RLinf-style)', type=int)
+    parser.add_argument('--use_chunky_actor_critic', default=0, help='use full (pi0_action_horizon x 32) noise for actor+critic; requires query_freq == pi0 horizon. If off, actor outputs 32-d noise repeated to pi0 length.', type=int)
     parser.add_argument('--libero_suite', default="libero_90", help='libero task suite', type=str)
     parser.add_argument('--libero_task_id', default=57, help='which libero task in suite', type=int)
     parser.add_argument(

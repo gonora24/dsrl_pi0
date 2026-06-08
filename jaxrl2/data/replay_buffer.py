@@ -27,10 +27,17 @@ def _init_replay_dict(obs_space: gym.Space,
 
 class ReplayBuffer(Dataset):
     
-    def __init__(self, observation_space: gym.Space, action_space: gym.Space, capacity: int, ):
+    def __init__(
+        self,
+        observation_space: gym.Space,
+        action_space: gym.Space,
+        capacity: int,
+        chunk_size: int = 0,
+    ):
         self.observation_space = observation_space
         self.action_space = action_space
         self.capacity = capacity
+        self.chunk_size = chunk_size
 
         print("making replay buffer of capacity ", self.capacity)
 
@@ -38,7 +45,12 @@ class ReplayBuffer(Dataset):
         next_observations = _init_replay_dict(self.observation_space, self.capacity)
         actions = np.empty((self.capacity, *self.action_space.shape), dtype=self.action_space.dtype)
         next_actions = np.empty((self.capacity, *self.action_space.shape), dtype=self.action_space.dtype)
-        rewards = np.empty((self.capacity, ), dtype=np.float32)
+        if chunk_size > 0:
+            rewards = np.empty((self.capacity, chunk_size), dtype=np.float32)
+            terminations = np.empty((self.capacity, chunk_size), dtype=np.bool_)
+        else:
+            rewards = np.empty((self.capacity, ), dtype=np.float32)
+            terminations = None
         masks = np.empty((self.capacity, ), dtype=np.float32)
         discount = np.empty((self.capacity, ), dtype=np.float32)
 
@@ -51,6 +63,8 @@ class ReplayBuffer(Dataset):
             'masks': masks,
             'discount': discount,
         }
+        if terminations is not None:
+            self.data['terminations'] = terminations
 
         self.size = 0
         self._traj_counter = 0
@@ -119,7 +133,12 @@ class ReplayBuffer(Dataset):
             next_observations = _init_replay_dict(self.observation_space, self.capacity)
             actions = np.empty((self.capacity, *self.action_space.shape), dtype=self.action_space.dtype)
             next_actions = np.empty((self.capacity, *self.action_space.shape), dtype=self.action_space.dtype)
-            rewards = np.empty((self.capacity, ), dtype=np.float32)
+            if self.chunk_size > 0:
+                rewards = np.empty((self.capacity, self.chunk_size), dtype=np.float32)
+                terminations = np.empty((self.capacity, self.chunk_size), dtype=np.bool_)
+            else:
+                rewards = np.empty((self.capacity, ), dtype=np.float32)
+                terminations = None
             masks = np.empty((self.capacity, ), dtype=np.float32)
             discount = np.empty((self.capacity, ), dtype=np.float32)
 
@@ -132,6 +151,8 @@ class ReplayBuffer(Dataset):
                 'masks': masks,
                 'discount': discount,
             }
+            if terminations is not None:
+                data_new['terminations'] = terminations
 
             for x in data_new:
                 if isinstance(self.data[x], np.ndarray):

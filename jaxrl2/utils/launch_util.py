@@ -38,6 +38,10 @@ def get_full_config_dict(variant, agent=None, extra=None):
             "aug_next": agent.aug_next,
             "color_jitter": agent.color_jitter,
             "num_cameras": agent.num_cameras,
+            "chunk_reward": agent.chunk_reward,
+            "use_chunky_actor_critic": agent.use_chunky_actor_critic,
+            "pi0_action_horizon": agent.pi0_action_horizon,
+            "action_horizon": agent.action_horizon,
         }
     if extra:
         config["extra"] = extra

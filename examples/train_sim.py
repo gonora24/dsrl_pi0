@@ -74,7 +74,11 @@ class DummyEnv(gym.ObservationWrapper):
                 state_dim = 14
             obs_dict['state'] = Box(low=-1.0, high=1.0, shape=(state_dim, 1), dtype=np.float32)
         self.observation_space = Dict(obs_dict)
-        self.action_space = Box(low=-1, high=1, shape=(1, 32,), dtype=np.float32) # 32 is the noise action space of pi 0
+        if variant.use_chunky_actor_critic:
+            action_shape = (variant.pi0_action_horizon, 32)
+        else:
+            action_shape = (1, 32)
+        self.action_space = Box(low=-1, high=1, shape=action_shape, dtype=np.float32)
 
 
 def main(variant):
@@ -137,6 +141,25 @@ def main(variant):
     group_name = variant.prefix + '_' + variant.launch_group_id
     wandb_output_dir = tempfile.mkdtemp()
     wandb_logger = WandBLogger(variant.prefix != '', variant, variant.wandb_project, experiment_id=expname, output_dir=wandb_output_dir, group_name=group_name)
+    pi0_ckpt = getattr(variant, "pi0_checkpoint", "openpi")
+    if variant.env == 'libero':
+        if pi0_ckpt == "pi05_libero":
+            openpi_config_name = "pi05_libero"
+        else:
+            openpi_config_name = "pi0_libero"
+    else:
+        openpi_config_name = "pi0_aloha_sim"
+    openpi_train_config = openpi_config.get_config(openpi_config_name)
+    variant.pi0_action_horizon = openpi_train_config.model.action_horizon
+    variant.use_chunky_actor_critic = bool(getattr(variant, 'use_chunky_actor_critic', 0))
+    if variant.use_chunky_actor_critic:
+        if variant.query_freq <= 0:
+            raise ValueError("use_chunky_actor_critic requires --query_freq > 0")
+        if variant.query_freq != variant.pi0_action_horizon:
+            raise ValueError(
+                "use_chunky_actor_critic requires --query_freq to match pi0 action horizon "
+                f"({variant.pi0_action_horizon}), got query_freq={variant.query_freq}"
+            )
 
     dummy_env = DummyEnv(variant)
     sample_obs = add_batch_dim(dummy_env.observation_space.sample())
@@ -146,9 +169,10 @@ def main(variant):
     
 
     if variant.env == 'libero':
-        pi0_ckpt = getattr(variant, "pi0_checkpoint", "openpi")
         if pi0_ckpt == "openpi":
             checkpoint_dir = download.maybe_download("s3://openpi-assets/checkpoints/pi0_libero")
+        elif pi0_ckpt == "pi05_libero":
+            checkpoint_dir = download.maybe_download("gs://openpi-assets/checkpoints/pi05_libero")
         elif pi0_ckpt == "rlinf_hf_long":
             from huggingface_hub import snapshot_download
             from openpi.shared import transformers_rlinf_patch
@@ -183,13 +207,26 @@ def main(variant):
         raise NotImplementedError()
 
     if variant.env == 'libero':
-        config = openpi_config.get_config("pi0_libero")
+        config = openpi_train_config
+    elif variant.env == 'pi05_libero':
+        config = openpi_train_config
     else:
-        config = openpi_config.get_config("pi0_aloha_sim")
+        config = openpi_train_config
 
     agent_dp = policy_config.create_trained_policy(config, checkpoint_dir)
     print(f"Loaded pi0 policy from {checkpoint_dir}", flush=True)
-    agent = PixelSACLearner(variant.seed, sample_obs, sample_action, **kwargs)
+    train_kwargs = dict(variant['train_kwargs'])
+    if train_kwargs.pop('cosine_decay', False):
+        train_kwargs['decay_steps'] = variant.max_steps
+    agent = PixelSACLearner(
+        variant.seed,
+        sample_obs,
+        sample_action,
+        chunk_reward=bool(variant.chunk_reward),
+        use_chunky_actor_critic=variant.use_chunky_actor_critic,
+        pi0_action_horizon=variant.pi0_action_horizon,
+        **train_kwargs,
+    )
 
     config_extra = {
         "pi0_checkpoint_dir": str(checkpoint_dir),
@@ -199,7 +236,13 @@ def main(variant):
     print_full_config(variant, agent=agent, extra=config_extra)
 
     online_buffer_size = variant.max_steps  // variant.multi_grad_step
-    online_replay_buffer = ReplayBuffer(dummy_env.observation_space, dummy_env.action_space, int(online_buffer_size))
+    chunk_size = variant.query_freq if variant.chunk_reward else 0
+    online_replay_buffer = ReplayBuffer(
+        dummy_env.observation_space,
+        dummy_env.action_space,
+        int(online_buffer_size),
+        chunk_size=chunk_size,
+    )
     replay_buffer = online_replay_buffer
     replay_buffer.seed(variant.seed)
     trajwise_alternating_training_loop(variant, agent, env, eval_env, online_replay_buffer, replay_buffer, wandb_logger, shard_fn=shard_fn, agent_dp=agent_dp)

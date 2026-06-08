@@ -1,4 +1,4 @@
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Tuple
 
 import distrax
 import flax.linen as nn
@@ -6,6 +6,42 @@ import jax.numpy as jnp
 
 from jaxrl2.networks import MLP
 from jaxrl2.networks.constants import default_init
+
+
+class ChunkedActionDistribution:
+    """Wraps a flat action distribution and exposes (action_horizon, dsrl_action_dim) actions."""
+
+    def __init__(
+        self,
+        base_dist: distrax.Distribution,
+        action_horizon: int,
+        dsrl_action_dim: int,
+    ):
+        self.distribution = base_dist.distribution
+        self._base = base_dist
+        self.action_horizon = action_horizon
+        self.dsrl_action_dim = dsrl_action_dim
+
+    def _reshape_action(self, x: jnp.ndarray) -> jnp.ndarray:
+        return x.reshape(*x.shape[:-1], self.action_horizon, self.dsrl_action_dim)
+
+    def _flatten_action(self, x: jnp.ndarray) -> jnp.ndarray:
+        if x.ndim >= 3:
+            return x.reshape(*x.shape[:-2], -1)
+        return x
+
+    def sample(self, *, seed) -> jnp.ndarray:
+        return self._reshape_action(self._base.sample(seed=seed))
+
+    def sample_and_log_prob(self, *, seed) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        x, log_prob = self._base.sample_and_log_prob(seed=seed)
+        return self._reshape_action(x), log_prob / self.action_horizon
+
+    def log_prob(self, x: jnp.ndarray) -> jnp.ndarray:
+        return self._base.log_prob(self._flatten_action(x)) / self.action_horizon
+
+    def mode(self) -> jnp.ndarray:
+        return self._reshape_action(self._base.mode())
 
 class LearnedStdNormalPolicy(nn.Module):
     hidden_dims: Sequence[int]
@@ -78,6 +114,8 @@ class LearnedStdTanhNormalPolicy(nn.Module):
     log_std_max: Optional[float] = 2
     low: Optional[float] = None
     high: Optional[float] = None
+    action_horizon: int = 1
+    dsrl_action_dim: int = 32
 
     @nn.compact
     def __call__(self,
@@ -93,5 +131,16 @@ class LearnedStdTanhNormalPolicy(nn.Module):
         log_stds = nn.Dense(self.action_dim, kernel_init=default_init(1e-2))(outputs)
         log_stds = jnp.clip(log_stds, self.log_std_min, self.log_std_max)
 
-        distribution = TanhMultivariateNormalDiag(loc=means, scale_diag=jnp.exp(log_stds), low=self.low, high=self.high)
+        distribution = TanhMultivariateNormalDiag(
+            loc=means,
+            scale_diag=jnp.exp(log_stds),
+            low=self.low,
+            high=self.high,
+        )
+        if self.action_horizon > 1:
+            return ChunkedActionDistribution(
+                distribution,
+                self.action_horizon,
+                self.dsrl_action_dim,
+            )
         return distribution
