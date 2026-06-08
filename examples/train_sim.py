@@ -36,6 +36,57 @@ from openpi.shared import download
 home_dir = os.environ['HOME']
 compilation_cache.initialize_cache(os.path.join(home_dir, 'jax_compilation_cache'))
 
+CHECKPOINTS = {
+    "openpi": {
+        "config": "pi0_libero",
+        "source": "gs://openpi-assets/checkpoints/pi0_libero",  # switch from s3://
+    },
+    "pi05_libero": {
+        "config": "pi05_libero",
+        "source": "gs://openpi-assets/checkpoints/pi05_libero",
+    },
+    "rlinf_hf_long": {
+        "config": "pi0_libero",
+        "hf_repo": "RLinf/RLinf-Pi0-LIBERO-Long-SFT",
+        "pytorch": True,
+    },
+    "rlinf_hf_goalSpatial": {
+        "config": "pi0_libero",
+        "hf_repo": "RLinf/RLinf-Pi0-LIBERO-Spatial-Object-Goal-SFT",
+        "pytorch": True,
+    },
+    "rlinf_hf_pi05": {
+        "config": "pi05_libero",
+        "hf_repo": "RLinf/RLinf-Pi05-LIBERO-SFT",
+        "pytorch": True,
+    },
+}
+
+
+def _load_pi0_checkpoint(pi0_ckpt: str) -> pathlib.Path:
+    if pi0_ckpt not in CHECKPOINTS:
+        checkpoint_dir = pathlib.Path(pi0_ckpt).expanduser().resolve()
+        if not checkpoint_dir.is_dir():
+            raise FileNotFoundError(f"--pi0_checkpoint path is not a directory: {checkpoint_dir}")
+        return checkpoint_dir
+
+    spec = CHECKPOINTS[pi0_ckpt]
+    if "source" in spec:
+        return pathlib.Path(download.maybe_download(spec["source"]))
+
+    from huggingface_hub import snapshot_download
+    from openpi.shared import transformers_rlinf_patch
+
+    hf_cache = pathlib.Path(download.get_cache_dir()) / "hf" / spec["hf_repo"].replace("/", "_")
+    checkpoint_dir = pathlib.Path(
+        snapshot_download(spec["hf_repo"], local_dir=str(hf_cache))
+    )
+    transformers_rlinf_patch.ensure_rlinf_transformers_patched()
+    transformers_rlinf_patch.purge_transformers_imports()
+    os.environ.setdefault("OPENPI_DISABLE_TORCH_COMPILE", "1")
+    return checkpoint_dir
+
+
 def _get_libero_env(task, resolution, seed):
     """Initializes and returns the LIBERO environment, along with the task description."""
     task_description = task.language
@@ -143,8 +194,8 @@ def main(variant):
     wandb_logger = WandBLogger(variant.prefix != '', variant, variant.wandb_project, experiment_id=expname, output_dir=wandb_output_dir, group_name=group_name)
     pi0_ckpt = getattr(variant, "pi0_checkpoint", "openpi")
     if variant.env == 'libero':
-        if pi0_ckpt == "pi05_libero":
-            openpi_config_name = "pi05_libero"
+        if pi0_ckpt in CHECKPOINTS:
+            openpi_config_name = CHECKPOINTS[pi0_ckpt]["config"]
         else:
             openpi_config_name = "pi0_libero"
     else:
@@ -169,38 +220,7 @@ def main(variant):
     
 
     if variant.env == 'libero':
-        if pi0_ckpt == "openpi":
-            checkpoint_dir = download.maybe_download("s3://openpi-assets/checkpoints/pi0_libero")
-        elif pi0_ckpt == "pi05_libero":
-            checkpoint_dir = download.maybe_download("gs://openpi-assets/checkpoints/pi05_libero")
-        elif pi0_ckpt == "rlinf_hf_long":
-            from huggingface_hub import snapshot_download
-            from openpi.shared import transformers_rlinf_patch
-
-            hf_cache = pathlib.Path(download.get_cache_dir()) / "hf" / "RLinf_RLinf-Pi0-LIBERO-Long-SFT"
-            checkpoint_dir = pathlib.Path(
-                snapshot_download("RLinf/RLinf-Pi0-LIBERO-Long-SFT", local_dir=str(hf_cache))
-            )
-            # RLinf Pi0 needs patched transformers *before* ``openpi.training.config`` imports them.
-            transformers_rlinf_patch.ensure_rlinf_transformers_patched()
-            transformers_rlinf_patch.purge_transformers_imports()
-            os.environ.setdefault("OPENPI_DISABLE_TORCH_COMPILE", "1")
-        elif pi0_ckpt == "rlinf_hf_goalSpatial":
-            from huggingface_hub import snapshot_download
-            from openpi.shared import transformers_rlinf_patch
-
-            hf_cache = pathlib.Path(download.get_cache_dir()) / "hf" / "RLinf_RLinf-Pi0-LIBERO-Spatial-Object-Goal-SFT"
-            checkpoint_dir = pathlib.Path(
-                snapshot_download("RLinf/RLinf-Pi0-LIBERO-Spatial-Object-Goal-SFT", local_dir=str(hf_cache))
-            )
-            # RLinf Pi0 needs patched transformers *before* ``openpi.training.config`` imports them.
-            transformers_rlinf_patch.ensure_rlinf_transformers_patched()
-            transformers_rlinf_patch.purge_transformers_imports()
-            os.environ.setdefault("OPENPI_DISABLE_TORCH_COMPILE", "1")
-        else:
-            checkpoint_dir = pathlib.Path(pi0_ckpt).expanduser().resolve()
-            if not checkpoint_dir.is_dir():
-                raise FileNotFoundError(f"--pi0_checkpoint path is not a directory: {checkpoint_dir}")
+        checkpoint_dir = _load_pi0_checkpoint(pi0_ckpt)
     elif variant.env == 'aloha_cube':
         checkpoint_dir = download.maybe_download("s3://openpi-assets/checkpoints/pi0_aloha_sim")
     else:

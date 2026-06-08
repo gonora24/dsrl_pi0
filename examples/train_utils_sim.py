@@ -466,7 +466,7 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
                 
                 if i == 0:
                     # for initial evaluation, we sample from standard gaussian noise to evaluate the base policy's performance
-                    noise = jax.random.normal(rng, (1, 50, 32))
+                    noise = jax.random.normal(rng, (1, variant.pi0_action_horizon, agent.action_dim))
                 else:
                     actions_noise = agent.sample_actions(obs_dict)
                     noise = _prepare_pi0_noise(actions_noise, agent, variant.pi0_action_horizon)

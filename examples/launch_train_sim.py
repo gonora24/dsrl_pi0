@@ -34,8 +34,8 @@ if __name__ == '__main__':
         default='openpi',
         type=str,
         help=(
-            "Pi0 weights for LIBERO: 'openpi' (Orbax, s3://openpi-assets/checkpoints/pi0_libero), "
-            "'rlinf_hf' (download RLinf/RLinf-Pi0-LIBERO-Long-SFT from Hugging Face, PyTorch safetensors), "
+            "Pi0 weights for LIBERO: 'openpi' (Orbax pi0_libero), 'pi05_libero' (Orbax gs://.../pi05_libero), "
+            "'rlinf_hf_long', 'rlinf_hf_goalSpatial', 'rlinf_hf_pi05' (HF PyTorch safetensors), "
             "or a local directory containing either Orbax 'params/' or 'model.safetensors'."
         ),
     )
