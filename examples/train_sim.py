@@ -43,7 +43,7 @@ CHECKPOINTS = {
     },
     "pi05_libero": {
         "config": "pi05_libero",
-        "source": "gs://openpi-assets/checkpoints/pi05_libero",
+        "source": "gs://openpi-assets/checkpoints/pi05_libero/",
     },
     "rlinf_hf_long": {
         "config": "pi0_libero",
@@ -173,7 +173,16 @@ def main(variant):
         eval_env = env
         variant.task_description = task_description
         variant.env_max_reward = 1
-        variant.max_timesteps = 400
+        variant.libero_init_states = task_suite.get_task_init_states(task_id)
+        # Match OpenPI libero eval horizons (examples/libero/main.py).
+        libero_max_timesteps = {
+            "libero_spatial": 220,
+            "libero_object": 280,
+            "libero_goal": 300,
+            "libero_10": 520,
+            "libero_90": 400,
+        }
+        variant.max_timesteps = libero_max_timesteps.get(variant.libero_suite, 400)
     elif variant.env == 'aloha_cube':
         from gymnasium.envs.registration import register
         register(
@@ -253,7 +262,7 @@ def main(variant):
         "openpi_config": config.name,
         "online_buffer_size": variant.max_steps // variant.multi_grad_step,
     }
-    print_full_config(variant, agent=agent, extra=config_extra)
+    # print_full_config(variant, agent=agent, extra=config_extra)
 
     online_buffer_size = variant.max_steps  // variant.multi_grad_step
     chunk_size = variant.query_freq if variant.chunk_reward else 0
