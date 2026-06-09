@@ -200,7 +200,7 @@ def trajwise_alternating_training_loop(variant, agent, env, eval_env, online_rep
 
             if len(online_replay_buffer) > variant.start_online_updates:
                 if not printed_pre_update_summary:
-                    print_pre_update_summary(variant, agent)
+                    # print_pre_update_summary(variant, agent)
                     printed_pre_update_summary = True
                 for _ in range(num_gradsteps):
                     # perform first visualization before updating
@@ -303,7 +303,7 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
     current_chunk_rewards = []
     current_chunk_terminations = []
 
-    for t in tqdm(range(max_timesteps)):
+    for t in range(max_timesteps):
         curr_image = obs_to_img(obs, variant)
         
         qpos = obs_to_qpos(obs, variant)
@@ -443,7 +443,7 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
         rewards = []
         
 
-        for t in tqdm(range(max_timesteps)):
+        for t in range(max_timesteps):
             curr_image = obs_to_img(obs, variant)
 
             if t % query_frequency == 0:
@@ -466,7 +466,7 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
                 
                 if i == 0:
                     # for initial evaluation, we sample from standard gaussian noise to evaluate the base policy's performance
-                    noise = jax.random.normal(rng, (1, variant.pi0_action_horizon, agent.action_dim))
+                    noise = jax.random.normal(rng, (1, variant.pi0_action_horizon, agent.dsrl_action_dim))
                 else:
                     actions_noise = agent.sample_actions(obs_dict)
                     noise = _prepare_pi0_noise(actions_noise, agent, variant.pi0_action_horizon)
@@ -498,7 +498,7 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
                 
         print(f'Rollout {rollout_id} : {episode_return=}, Success: {is_success}')
         video = np.stack(image_list).transpose(0, 3, 1, 2)
-        wandb_logger.log({f'eval_video/{rollout_id}': wandb.Video(video, fps=50)}, step=i)
+        wandb_logger.log({f'eval_video/{rollout_id}': wandb.Video(video, fps=50, format="gif")}, step=i)
 
 
     success_rate = np.mean(np.array(success_rates))
