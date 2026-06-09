@@ -35,10 +35,10 @@ class ChunkedActionDistribution:
 
     def sample_and_log_prob(self, *, seed) -> Tuple[jnp.ndarray, jnp.ndarray]:
         x, log_prob = self._base.sample_and_log_prob(seed=seed)
-        return self._reshape_action(x), log_prob / self.action_horizon
+        return self._reshape_action(x), log_prob
 
     def log_prob(self, x: jnp.ndarray) -> jnp.ndarray:
-        return self._base.log_prob(self._flatten_action(x)) / self.action_horizon
+        return self._base.log_prob(self._flatten_action(x))
 
     def mode(self) -> jnp.ndarray:
         return self._reshape_action(self._base.mode())
