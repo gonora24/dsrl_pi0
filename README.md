@@ -1,6 +1,6 @@
 <div align="center">
 
-# DSRL for π₀: Diffusion Steering via Reinforcement Learning
+# DSRL for π₀ and π₀.₅: Diffusion Steering via Reinforcement Learning
 
 ## [[website](https://diffusion-steering.github.io)]      [[paper](https://arxiv.org/abs/2506.15799)]
 
@@ -52,6 +52,13 @@ pip install -e openpi/packages/openpi-client
 # install Libero
 pip install -e LIBERO
 pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu # needed for libero
+
+# uninstall conflicting cuda versions
+pip list --format=freeze | grep '^nvidia-' | cut -d= -f1
+pip uninstall -y $(pip list --format=freeze | grep '^nvidia-' | cut -d= -f1)
+
+# reinstall jax
+pip install "jax[cuda12]==0.5.0"
 ```
 
 ## Training (Simulation)
