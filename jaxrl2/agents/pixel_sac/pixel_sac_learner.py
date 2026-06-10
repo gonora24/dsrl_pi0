@@ -30,7 +30,7 @@ from jaxrl2.agents.pixel_sac.temperature_updater import update_temperature
 from jaxrl2.agents.pixel_sac.temperature import Temperature
 from jaxrl2.data.dataset import DatasetDict
 from jaxrl2.networks.learned_std_normal_policy import LearnedStdTanhNormalPolicy
-from jaxrl2.networks.values import StateActionEnsemble
+from jaxrl2.networks.values import CriticGPTEnsemble, StateActionEnsemble
 from jaxrl2.types import Params, PRNGKey
 from jaxrl2.utils.target_update import soft_target_update
 
@@ -131,6 +131,12 @@ class PixelSACLearner(Agent):
                  use_chunky_actor_critic: bool = False,
                  pi0_action_horizon: int = 50,
                  dsrl_action_dim: int = 32,
+                 use_transformer_critic: bool = False,
+                 transformer_n_embd: int = 256,
+                 transformer_n_head: int = 4,
+                 transformer_n_layer: int = 4,
+                 transformer_use_layer_norm: bool = True,
+                 transformer_use_bias: bool = False,
                  ):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1812.05905
@@ -215,13 +221,33 @@ class PixelSACLearner(Agent):
                                   tx=optax.adam(learning_rate=actor_lr),
                                   batch_stats=actor_batch_stats)
 
-        critic_def = StateActionEnsemble(
-            hidden_dims,
-            num_qs=num_qs,
-            use_chunky_actor_critic=use_chunky_actor_critic,
-        )
+        if use_transformer_critic:
+            # use_transformer_critic requires use_chunky_actor_critic=True so that
+            # actions arrive as [B, T, action_dim] rather than flattened.
+            assert use_chunky_actor_critic, \
+                "use_transformer_critic requires use_chunky_actor_critic=True"
+            state_dim = int(np.prod(observations['state'].shape[1:]))
+            critic_net = CriticGPTEnsemble(
+                state_dim=state_dim,
+                image_dim=latent_dim,
+                action_dim=dsrl_action_dim,
+                action_horizon=pi0_action_horizon,
+                n_embd=transformer_n_embd,
+                n_head=transformer_n_head,
+                n_layer=transformer_n_layer,
+                dropout=dropout_rate or 0.0,
+                use_layer_norm=transformer_use_layer_norm,
+                use_bias=transformer_use_bias,
+                num_qs=num_qs,
+            )
+        else:
+            critic_net = StateActionEnsemble(
+                hidden_dims,
+                num_qs=num_qs,
+                use_chunky_actor_critic=use_chunky_actor_critic,
+            )
         critic_def = PixelMultiplexer(encoder=encoder_def,
-                                      network=critic_def,
+                                      network=critic_net,
                                       latent_dim=latent_dim,
                                       use_bottleneck=use_bottleneck
                                       )

@@ -27,6 +27,12 @@ if __name__ == '__main__':
     parser.add_argument('--query_freq', default=-1, help='query frequency', type=int)
     parser.add_argument('--chunk_reward', default=0, help='sum discounted per-step env rewards within each action chunk for critic bootstrap (RLinf-style)', type=int)
     parser.add_argument('--use_chunky_actor_critic', default=0, help='use full (pi0_action_horizon x 32) noise for actor+critic; requires query_freq == pi0 horizon. If off, actor outputs 32-d noise repeated to pi0 length.', type=int)
+    parser.add_argument('--use_transformer_critic', default=0, help='use transformer critic', type=int)
+    parser.add_argument('--transformer_n_embd', default=256, help='transformer embedding dimension', type=int)
+    parser.add_argument('--transformer_n_head', default=4, help='transformer number of heads', type=int)
+    parser.add_argument('--transformer_n_layer', default=4, help='transformer number of layers', type=int)
+    parser.add_argument('--transformer_use_layer_norm', default=1, help='transformer use layer norm', type=int)
+    parser.add_argument('--transformer_use_bias', default=0, help='transformer use bias', type=int)
     parser.add_argument('--libero_suite', default="libero_90", help='libero task suite', type=str)
     parser.add_argument('--libero_task_id', default=57, help='which libero task in suite', type=int)
     parser.add_argument(

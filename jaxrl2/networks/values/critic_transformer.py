@@ -150,10 +150,8 @@ class CriticGPT(nn.Module):
     n_head: int
     n_layer: int
     dropout: float
-    use_layer_norm: bool
-    use_bias: bool
-    relative_pos: bool
-    num_q_heads: int = 1
+    use_layer_norm: int
+    use_bias: int
 
     def setup(self):
         residual_std = 0.02 / math.sqrt(2 * self.n_layer)
@@ -186,58 +184,49 @@ class CriticGPT(nn.Module):
         if self.use_layer_norm:
             self.ln_f = nn.LayerNorm(use_bias=self.use_bias)
         self.output_layer = nn.Dense(
-            self.num_q_heads, use_bias=False,
+            1, use_bias=False,
             kernel_init=nn.initializers.normal(0.02),
         )
 
     def __call__(
         self,
-        state_features: jnp.ndarray,
-        image_features: jnp.ndarray,
+        observations,
         actions: Optional[jnp.ndarray] = None,
-        idx_s: Optional[jnp.ndarray] = None,
-        idx_a: Optional[jnp.ndarray] = None,
         training: bool = False,
     ) -> jnp.ndarray:
         """
         Args:
-            state_features:  [..., state_dim]
-            image_features:  [..., image_dim]
-            actions:         [..., T, action_dim]  or None
-            idx_s:           [...] state time-step index (only when relative_pos=False)
-            idx_a:           [..., T] action time-step indices (only when relative_pos=False)
-            training:        enable dropout
+            observations:  dict with keys 'pixels' ([B, image_dim]) and 'state' ([B, ...])
+                           'pixels' is expected to already be the encoded latent vector
+                           (i.e. this module is called after PixelMultiplexer encoding)
+            actions:       [B, T, action_dim]  or None
+            training:      enable dropout
 
         Returns:
-            [..., 1 + T, num_q_heads]
+            [B] — Q-value of the complete action chunk.
+              The last token in the causal sequence attends to all T action tokens
+              and thus represents the value of the full chunk.
         """
+        image_features = observations['pixels']                    # [B, image_dim]
+        state = observations['state']
+        state_features = state.reshape(state.shape[0], -1)         # [B, state_dim]
+
         t = 0 if actions is None else actions.shape[-2]
         assert t + 1 <= self.action_horizon + 1
 
-        # Context token: (state, image) -> [..., 1, n_embd]
+        # Context token: (state, image) -> [B, 1, n_embd]
         context_feat = jnp.concatenate([state_features, image_features], axis=-1)
-        context_emb = self.context_proj(context_feat)[..., None, :]  # [..., 1, n_embd]
+        context_emb = self.context_proj(context_feat)[..., None, :]  # [B, 1, n_embd]
 
         if actions is not None:
-            action_emb = self.action_encoder(actions)               # [..., T, n_embd]
-            seq_emb = jnp.concatenate([context_emb, action_emb], axis=-2)  # [..., 1+T, n_embd]
+            action_emb = self.action_encoder(actions)                    # [B, T, n_embd]
+            seq_emb = jnp.concatenate([context_emb, action_emb], axis=-2)  # [B, 1+T, n_embd]
         else:
-            seq_emb = context_emb                                   # [..., 1, n_embd]
+            seq_emb = context_emb                                        # [B, 1, n_embd]
 
-        # Positional embeddings
-        if self.relative_pos:
-            pos = jnp.arange(1 + t)  # [1+T]
-        else:
-            if idx_s is None:
-                raise ValueError("idx_s is required when relative_pos=False")
-            if actions is not None and idx_a is None:
-                raise ValueError("idx_a is required when relative_pos=False and actions is not None")
-            if actions is not None:
-                pos = jnp.concatenate([idx_s[..., None], idx_a], axis=-1)  # [..., 1+T]
-            else:
-                pos = idx_s[..., None]                                       # [..., 1]
-
-        pos_emb = self.pos_enc(pos)  # [1+T, n_embd] or [..., 1+T, n_embd]
+        # Relative positional embeddings: context=0, actions=1..T
+        pos = jnp.arange(1 + t)                                    # [1+T]
+        pos_emb = self.pos_enc(pos)                                 # [1+T, n_embd]
 
         x = self.drop(seq_emb + pos_emb, deterministic=not training)
 
@@ -247,8 +236,9 @@ class CriticGPT(nn.Module):
         if self.use_layer_norm:
             x = self.ln_f(x)
 
-        x = self.output_layer(x)  # [..., 1+T, num_q_heads]
-        return x
+        x = self.output_layer(x)  # [B, 1+T, 1]
+        # Last token sees all actions -> scalar Q per sample
+        return x[..., -1, :] # [B, 1]
 
 
 class CriticGPTEnsemble(nn.Module):
@@ -262,25 +252,26 @@ class CriticGPTEnsemble(nn.Module):
     n_head: int
     n_layer: int
     dropout: float
-    use_layer_norm: bool
-    use_bias: bool
-    relative_pos: bool
-    num_q_heads: int = 1
+    use_layer_norm: int
+    use_bias: int
     num_qs: int = 2
 
     @nn.compact
     def __call__(
         self,
-        state_features: jnp.ndarray,
-        image_features: jnp.ndarray,
+        observations,
         actions: Optional[jnp.ndarray] = None,
-        idx_s: Optional[jnp.ndarray] = None,
-        idx_a: Optional[jnp.ndarray] = None,
         training: bool = False,
     ) -> jnp.ndarray:
         """
+        Args:
+            observations:  dict with 'pixels' [B, image_dim] and 'state' [B, ...]
+            actions:       [B, T, action_dim] or None
+            training:      enable dropout
+
         Returns:
-            [num_qs, ..., 1 + T, num_q_heads]
+            [num_qs, B] — Q-value of the complete action chunk for each ensemble member,
+              matching the interface of StateActionEnsemble.
         """
         VmapCritic = nn.vmap(
             CriticGPT,
@@ -301,6 +292,4 @@ class CriticGPTEnsemble(nn.Module):
             dropout=self.dropout,
             use_layer_norm=self.use_layer_norm,
             use_bias=self.use_bias,
-            relative_pos=self.relative_pos,
-            num_q_heads=self.num_q_heads,
-        )(state_features, image_features, actions, idx_s, idx_a, training)
+        )(observations, actions, training)            # [num_qs, B, 1+T, 1]
