@@ -29,6 +29,7 @@ from jaxrl2.agents.pixel_sac.critic_updater import update_critic
 from jaxrl2.agents.pixel_sac.temperature_updater import update_temperature
 from jaxrl2.agents.pixel_sac.temperature import Temperature
 from jaxrl2.data.dataset import DatasetDict
+from jaxrl2.networks.actor_transformer import AutoregressiveActorTransformer
 from jaxrl2.networks.learned_std_normal_policy import LearnedStdTanhNormalPolicy
 from jaxrl2.networks.values import CriticGPTEnsemble, StateActionEnsemble
 from jaxrl2.types import Params, PRNGKey
@@ -137,6 +138,11 @@ class PixelSACLearner(Agent):
                  transformer_n_layer: int = 4,
                  transformer_use_layer_norm: bool = True,
                  transformer_use_bias: bool = False,
+                 use_transformer_actor: bool = False,
+                 actor_transformer_d_model: int = 256,
+                 actor_transformer_n_layers: int = 3,
+                 actor_transformer_n_heads: int = 4,
+                 actor_transformer_dropout: float = 0.1,
                  ):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1812.05905
@@ -196,15 +202,34 @@ class PixelSACLearner(Agent):
         if len(hidden_dims) == 1:
             hidden_dims = (hidden_dims[0], hidden_dims[0], hidden_dims[0])
         
-        policy_def = LearnedStdTanhNormalPolicy(
-            hidden_dims,
-            self.action_dim,
-            dropout_rate=dropout_rate,
-            low=-action_magnitude,
-            high=action_magnitude,
-            action_horizon=policy_action_horizon,
-            dsrl_action_dim=dsrl_action_dim,
-        )
+        if use_transformer_actor:
+            assert use_chunky_actor_critic, \
+                "use_transformer_actor requires use_chunky_actor_critic=True"
+            state_dim = int(np.prod(observations['state'].shape[1:]))
+            policy_def = AutoregressiveActorTransformer(
+                state_dim=state_dim,
+                image_dim=latent_dim,
+                action_dim=dsrl_action_dim,
+                chunk_size=pi0_action_horizon,
+                d_model=actor_transformer_d_model,
+                n_layers=actor_transformer_n_layers,
+                n_heads=actor_transformer_n_heads,
+                dropout=actor_transformer_dropout,
+                log_std_min=-20,
+                log_std_max=2,
+                low=-action_magnitude,
+                high=action_magnitude,
+            )
+        else:
+            policy_def = LearnedStdTanhNormalPolicy(
+                hidden_dims,
+                self.action_dim,
+                dropout_rate=dropout_rate,
+                low=-action_magnitude,
+                high=action_magnitude,
+                action_horizon=policy_action_horizon,
+                dsrl_action_dim=dsrl_action_dim,
+            )
 
         actor_def = PixelMultiplexer(encoder=encoder_def,
                                      network=policy_def,
