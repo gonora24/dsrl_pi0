@@ -55,7 +55,9 @@ class CausalSelfAttention(nn.Module):
         y = jnp.einsum("...qk,...kd->...qd", attn_weights, v)  # [..., n_head, T, head_dim]
 
         # [..., n_head, T, head_dim] -> [..., T, C]
+        print('y before swapaxes and reshape', y.shape)
         y = y.swapaxes(-3, -2).reshape(y.shape[:-3] + (T, C))
+        print('y after swapaxes and reshape', y.shape)
 
         # Output projection with scaled residual init
         y = nn.Dense(
@@ -207,7 +209,7 @@ class CriticGPT(nn.Module):
               The last token in the causal sequence attends to all T action tokens
               and thus represents the value of the full chunk.
         """
-        image_features = observations['pixels']                    # [B, image_dim]
+        image_features = observations['pixels']                    # [B, image_dim] in latent space already encoded
         state = observations['state']
         state_features = state.reshape(state.shape[0], -1)         # [B, state_dim]
 
@@ -238,7 +240,7 @@ class CriticGPT(nn.Module):
 
         x = self.output_layer(x)  # [B, 1+T, 1]
         # Last token sees all actions -> scalar Q per sample
-        return x[..., -1, :] # [B, 1]
+        return x[..., -1, 0] # [B]
 
 
 class CriticGPTEnsemble(nn.Module):
@@ -292,4 +294,4 @@ class CriticGPTEnsemble(nn.Module):
             dropout=self.dropout,
             use_layer_norm=self.use_layer_norm,
             use_bias=self.use_bias,
-        )(observations, actions, training)            # [num_qs, B, 1+T, 1]
+        )(observations, actions, training)            # [num_qs, B] — Q-value of the complete action chunk for each ensemble member

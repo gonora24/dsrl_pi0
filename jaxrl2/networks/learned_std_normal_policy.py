@@ -4,7 +4,7 @@ import distrax
 import flax.linen as nn
 import jax.numpy as jnp
 
-from jaxrl2.networks import MLP
+from jaxrl2.networks.mlp import MLP
 from jaxrl2.networks.constants import default_init
 
 
@@ -89,11 +89,22 @@ class TanhMultivariateNormalDiag(distrax.Transformed):
                 high_ = jnp.broadcast_to(high, x.shape)
                 low_ = jnp.broadcast_to(low, x.shape)
                 return jnp.sum(jnp.log(0.5 * (high_ - low_)), -1)
+            
+            def inverse_log_det_jacobian(y):
+                high_ = jnp.broadcast_to(high, y.shape)
+                low_ = jnp.broadcast_to(low, y.shape)
+                return jnp.sum(jnp.log(0.5 * (high_ - low_)), -1)
+
+            def inverse_rescale(y):
+                x = (y - low) / (high - low)
+                return 2. * x - 1.
 
             layers.append(
                 distrax.Lambda(
                     rescale_from_tanh,
+                    inverse=inverse_rescale,
                     forward_log_det_jacobian=forward_log_det_jacobian,
+                    inverse_log_det_jacobian=inverse_log_det_jacobian,
                     event_ndims_in=1,
                     event_ndims_out=1))
 

@@ -7,7 +7,7 @@
 
 set -euo pipefail
 
-suite="libero_object"
+suite="libero_90"
 num_rollouts="${2:-10}"
 
 module load devel/miniforge 2>/dev/null || true

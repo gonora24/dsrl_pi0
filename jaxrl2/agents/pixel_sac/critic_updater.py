@@ -18,6 +18,7 @@ def update_critic(
     next_actions, next_log_probs = dist.sample_and_log_prob(seed=key)
     next_qs = target_critic.apply_fn({'params': target_critic.params},
                                      batch['next_observations'], next_actions)
+    print(next_qs.shape)
     if critic_reduction == 'min':
         next_q = next_qs.min(axis=0)
     elif critic_reduction == 'mean':

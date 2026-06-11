@@ -2,7 +2,7 @@
 #SBATCH --ntasks=1
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1 
-#SBATCH --job-name=dsrl_pi05_libero_90_task29
+#SBATCH --job-name=dsrl_pi0_libero_10_task8_aractor
 
 module load devel/miniforge
 conda deactivate
@@ -13,7 +13,7 @@ export WANDB_USERNAME='noragorhan'
 export WANDB_TEAM='noragorhan-karlsruhe-institute-of-technology'
 proj_name=DSRL_pi0_Libero
 device_id=0
-wandb_mode=online  # online or offline
+wandb_mode=offline  # online or offline
 export WANDB_MODE=${wandb_mode}
 
 export PYTHONPATH="${PYTHONPATH}:/pfs/data6/home/ka/ka_anthropomatik/ka_eu3660/projects/dsrl_pi0/"
@@ -36,27 +36,38 @@ pip install "transformers==4.53.2"
 python3 examples/launch_train_sim.py \
 --algorithm pixel_sac \
 --env libero \
---prefix dsrl_pi05_libero \
---suffix libero_90_task29 \
+--prefix dsrl_pi0_libero \
+--suffix libero_10_task8_chunkrewardcriticactor_aractor \
 --wandb_project ${proj_name} \
 --batch_size 256 \
 --discount 0.999 \
 --seed 0 \
---max_steps 500000  \
+--max_steps 500000 \
 --eval_interval 10000 \
 --checkpoint_interval -1 \
 --log_interval 500 \
 --eval_episodes 10 \
 --multi_grad_step 20 \
---start_online_updates 500 \
+--start_online_updates 20 \
 --resize_image 64 \
 --action_magnitude 1.0 \
---query_freq 5 \
+--query_freq 50 \
 --hidden_dims 128 \
---libero_suite "libero_90" \
---libero_task_id 29 \
---pi0_checkpoint pi05_libero \
---chunk_reward 0 \
---use_chunky_actor_critic 0 \
+--libero_suite "libero_10" \
+--libero_task_id 8 \
+--pi0_checkpoint openpi \
+--chunk_reward 1 \
+--use_chunky_actor_critic 1 \
+--use_transformer_critic 0 \
+--transformer_n_embd 128 \
+--transformer_n_head 4 \
+--transformer_n_layer 3 \
+--transformer_use_layer_norm 1 \
+--transformer_use_bias 0 \
+--use_transformer_actor 1 \
+--actor_transformer_d_model 128 \
+--actor_transformer_n_layers 3 \
+--actor_transformer_n_heads 4 \
+--actor_transformer_dropout 0.1 \
 
-## batch size 256, multi grad step 20, hidden dims 50
+## batch size 256, multi grad step 20, hidden dims 50, entropy scaling is auto

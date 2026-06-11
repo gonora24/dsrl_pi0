@@ -2,7 +2,7 @@
 #SBATCH --ntasks=1
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1 
-#SBATCH --job-name=dsrl_pi0_libero_90_task14
+#SBATCH --job-name=dsrl_pi0_libero_90_task29
 
 module load devel/miniforge
 conda deactivate
@@ -37,7 +37,7 @@ python3 examples/launch_train_sim.py \
 --algorithm pixel_sac \
 --env libero \
 --prefix dsrl_pi0_libero \
---suffix libero_90_task14 \
+--suffix libero_90_task29 \
 --wandb_project ${proj_name} \
 --batch_size 256 \
 --discount 0.999 \
@@ -54,7 +54,7 @@ python3 examples/launch_train_sim.py \
 --query_freq 20 \
 --hidden_dims 128 \
 --libero_suite "libero_90" \
---libero_task_id 14 \
+--libero_task_id 29 \
 --pi0_checkpoint openpi \
 --chunk_reward 0 \
 --use_chunky_actor_critic 0 \

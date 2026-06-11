@@ -176,10 +176,10 @@ def main(variant):
         variant.libero_init_states = task_suite.get_task_init_states(task_id)
         # Match OpenPI libero eval horizons (examples/libero/main.py).
         libero_max_timesteps = {
-            "libero_spatial": 220,
-            "libero_object": 280,
+            "libero_spatial": 250, #220, divisible by 50
+            "libero_object": 300, #280,
             "libero_goal": 300,
-            "libero_10": 520,
+            "libero_10": 550, #520,
             "libero_90": 400,
         }
         variant.max_timesteps = libero_max_timesteps.get(variant.libero_suite, 400)
@@ -247,6 +247,8 @@ def main(variant):
     train_kwargs = dict(variant['train_kwargs'])
     if train_kwargs.pop('cosine_decay', False):
         train_kwargs['decay_steps'] = variant.max_steps
+    if variant.use_transformer_critic:
+        train_kwargs['num_qs'] = 1
     agent = PixelSACLearner(
         variant.seed,
         sample_obs,
@@ -254,6 +256,17 @@ def main(variant):
         chunk_reward=bool(variant.chunk_reward),
         use_chunky_actor_critic=variant.use_chunky_actor_critic,
         pi0_action_horizon=variant.pi0_action_horizon,
+        use_transformer_critic=variant.use_transformer_critic,
+        transformer_n_embd=variant.transformer_n_embd,
+        transformer_n_head=variant.transformer_n_head,
+        transformer_n_layer=variant.transformer_n_layer,
+        transformer_use_layer_norm=variant.transformer_use_layer_norm,
+        transformer_use_bias=variant.transformer_use_bias,
+        use_transformer_actor=variant.use_transformer_actor,
+        actor_transformer_d_model=variant.actor_transformer_d_model,
+        actor_transformer_n_layers=variant.actor_transformer_n_layers,
+        actor_transformer_n_heads=variant.actor_transformer_n_heads,
+        actor_transformer_dropout=variant.actor_transformer_dropout,
         **train_kwargs,
     )
 

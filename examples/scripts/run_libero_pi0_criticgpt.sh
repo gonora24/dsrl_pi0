@@ -37,7 +37,7 @@ python3 examples/launch_train_sim.py \
 --algorithm pixel_sac \
 --env libero \
 --prefix dsrl_pi0_libero \
---suffix libero_10_task8_chunkrewardcriticactor_criticgpt \
+--suffix libero_10_task8_chunkrewardcriticactor_criticgpt_1numqs \
 --wandb_project ${proj_name} \
 --batch_size 256 \
 --discount 0.999 \

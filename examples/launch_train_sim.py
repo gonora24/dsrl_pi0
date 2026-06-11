@@ -33,6 +33,11 @@ if __name__ == '__main__':
     parser.add_argument('--transformer_n_layer', default=4, help='transformer number of layers', type=int)
     parser.add_argument('--transformer_use_layer_norm', default=1, help='transformer use layer norm', type=int)
     parser.add_argument('--transformer_use_bias', default=0, help='transformer use bias', type=int)
+    parser.add_argument('--use_transformer_actor', default=0, help='use transformer actor', type=int)
+    parser.add_argument('--actor_transformer_d_model', default=128, help='actor transformer embedding dimension', type=int)
+    parser.add_argument('--actor_transformer_n_layers', default=3, help='actor transformer number of layers', type=int)
+    parser.add_argument('--actor_transformer_n_heads', default=4, help='actor transformer number of heads', type=int)
+    parser.add_argument('--actor_transformer_dropout', default=0.1, help='actor transformer dropout', type=float)
     parser.add_argument('--libero_suite', default="libero_90", help='libero task suite', type=str)
     parser.add_argument('--libero_task_id', default=57, help='which libero task in suite', type=int)
     parser.add_argument(
