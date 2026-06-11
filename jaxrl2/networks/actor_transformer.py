@@ -119,7 +119,12 @@ class AutoregressiveActorTransformer(nn.Module):
 
         features = jnp.concatenate([state_features, image_features], axis=-1)
         context = self.context_proj(features)[:, None, :]
-
+        dummy_action = jnp.zeros(
+            (context.shape[0], self.action_dim),
+            dtype=context.dtype
+        )
+        _ = self._embed_action(dummy_action)
+        
         h = self._forward_tokens(context, training=training)
         loc, scale = self._head(h[:, -1])
 
