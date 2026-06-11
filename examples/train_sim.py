@@ -215,11 +215,6 @@ def main(variant):
     if variant.use_chunky_actor_critic:
         if variant.query_freq <= 0:
             raise ValueError("use_chunky_actor_critic requires --query_freq > 0")
-        if variant.query_freq != variant.pi0_action_horizon:
-            raise ValueError(
-                "use_chunky_actor_critic requires --query_freq to match pi0 action horizon "
-                f"({variant.pi0_action_horizon}), got query_freq={variant.query_freq}"
-            )
 
     dummy_env = DummyEnv(variant)
     sample_obs = add_batch_dim(dummy_env.observation_space.sample())
