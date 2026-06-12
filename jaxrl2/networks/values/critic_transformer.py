@@ -11,6 +11,7 @@ import math
 from typing import Optional
 
 import flax.linen as nn
+from flax import nnx
 import jax
 import jax.numpy as jnp
 
@@ -102,6 +103,14 @@ class GPTBlock(nn.Module):
     residual_std: float
 
     def setup(self):
+        # self.attn = nnx.MultiHeadAttention(
+        #     num_heads=self.n_head,
+        #     in_features=self.n_embd,
+        #     use_bias=self.use_bias,
+        #     dropout_rate=self.dropout,
+        #     rngs=nnx.Rngs(0),
+        #     decode=False,
+        # )
         self.attn = CausalSelfAttention(
             n_embd=self.n_embd,
             n_head=self.n_head,
