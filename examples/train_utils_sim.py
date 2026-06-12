@@ -348,7 +348,11 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
             done = terminated or truncated
 
         if chunk_reward:
-            current_chunk_rewards.append(float(reward))
+            if done:
+                reward = 0.0
+            else:
+                reward = -1.0
+            current_chunk_rewards.append(reward)
             current_chunk_terminations.append(bool(done))
             
         env_rewards.append(reward)
