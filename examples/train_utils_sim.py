@@ -485,6 +485,11 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
                 obs, reward, terminated, truncated, _ = env.step(action_t)
                 done = terminated or truncated
                 
+            if variant.chunk_reward:
+                if done:
+                    reward = 0.0
+                else:
+                    reward = -1.0
             rewards.append(reward)
             image_list.append(curr_image)
             if done:
