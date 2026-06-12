@@ -63,6 +63,11 @@ class AutoregressiveDistribution:
             self._variables, self._context, seed
         )
 
+    def sample(self, *, seed):
+        actions, _ = self._module.ar_sample(
+            self._variables, self._context, seed
+        )
+        return actions
 
 class AutoregressiveActorTransformer(nn.Module):
     state_dim: int
@@ -142,19 +147,16 @@ class AutoregressiveActorTransformer(nn.Module):
         def step(carry, t):
             buf, rng = carry
 
-            # Korrekte Attention-Maske für Flax MHA.
-            # Shape muss [B, n_heads, seq_len, seq_len] sein.
-            # True = Position darf attended werden, False = wird maskiert.
-            # Wir maskieren alle Key-Positionen > t (noch nicht geschrieben).
-            seq_idx = jnp.arange(T + 1)                         # [T+1]
-            key_mask = (seq_idx <= t)                            # [T+1], bool
-            # Broadcast zu [B, n_heads, T+1, T+1]:
-            # Alle Query-Positionen sehen dieselbe Key-Maske.
+            seq_idx = jnp.arange(T + 1)
+            # Causal: query i can only attend to key j if j <= i
+            causal_mask = (seq_idx[None, :] <= seq_idx[:, None])  # [T+1, T+1]
+            # Additionally gate out positions > t (not yet written)
+            written_mask = seq_idx[None, :] <= t                   # [1, T+1]
+            mask = causal_mask & written_mask                       # [T+1, T+1]
             mask = jnp.broadcast_to(
-                key_mask[None, None, None, :],
+                mask[None, None, :, :],
                 (B, self.n_heads, T + 1, T + 1),
             )
-
             h = self.apply(
                 variables,
                 buf,
