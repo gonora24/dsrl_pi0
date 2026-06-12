@@ -173,6 +173,8 @@ def main(variant):
         eval_env = env
         variant.task_description = task_description
         variant.env_max_reward = 1
+        if variant.chunk_reward:
+            variant.env_max_reward = 0
         variant.libero_init_states = task_suite.get_task_init_states(task_id)
         # Match OpenPI libero eval horizons (examples/libero/main.py).
         libero_max_timesteps = {
