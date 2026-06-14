@@ -6,6 +6,11 @@
 
 </div>
 
+# My contribution 
+- Integrating π₀.₅
+- Integrating Critic and Actor Transformer Logic
+- Improving evaluation on different tasks and suites (Libero)
+
 
 ## Overview
 This repository provides the official implementation for our paper: [Steering Your Diffusion Policy with Latent Space Reinforcement Learning](https://arxiv.org/abs/2506.15799) (CoRL 2025).
