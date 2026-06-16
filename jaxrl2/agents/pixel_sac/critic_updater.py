@@ -18,7 +18,7 @@ def update_critic(
     next_actions, next_log_probs = dist.sample_and_log_prob(seed=key)
     next_qs = target_critic.apply_fn({'params': target_critic.params},
                                      batch['next_observations'], next_actions)
-    print(next_qs.shape)
+
     if critic_reduction == 'min':
         next_q = next_qs.min(axis=0)
     elif critic_reduction == 'mean':
@@ -33,7 +33,12 @@ def update_critic(
         gamma_powers = discount ** exponents
         rewards_for_bootstrap = jnp.sum(rewards * gamma_powers, axis=-1)
         bootstrap_discount = discount ** chunk_size
-        bootstrap_mask = jnp.logical_not(jnp.any(batch['terminations'], axis=-1))
+        # bootstrap_mask = jnp.logical_not(jnp.any(batch['terminations'], axis=-1))
+        bootstrap_mask = batch['masks']
+        # jax.debug.print('bootstrap_mask shape: {bootstrap_mask}', bootstrap_mask=bootstrap_mask.shape)
+        # jax.debug.print('bootstrap_mask: {bootstrap_mask}', bootstrap_mask=bootstrap_mask[0])
+        # jax.debug.print('terminations: {terminations}', terminations=batch['terminations'][0])
+        # jax.debug.print('terminations shape: {terminations}', terminations=batch['terminations'].shape)
     else:
         rewards_for_bootstrap = rewards
         bootstrap_discount = batch['discount']
@@ -43,6 +48,8 @@ def update_critic(
         rewards_for_bootstrap
         + bootstrap_discount * bootstrap_mask * next_q
     )
+    # jax.debug.print('target_q: {target_q}', target_q=target_q)
+    # jax.debug.print('rewards_for_bootstrap: {rewards_for_bootstrap}', rewards_for_bootstrap=rewards_for_bootstrap)
 
     if backup_entropy:
         target_q -= bootstrap_discount * bootstrap_mask * temp.apply_fn(
@@ -55,7 +62,10 @@ def update_critic(
         critic_loss = ((qs - target_q)**2).mean()
         return critic_loss, {
             'critic_loss': critic_loss,
-            'q': qs.mean(),
+            'q_mean': qs.mean(),
+            'q_std': jnp.std(qs),
+            'q_min': jnp.min(qs),
+            'q_max': jnp.max(qs),
             'target_actor_entropy': -next_log_probs.mean(),
             'next_actions_sampled': next_actions.mean(),
             'next_log_probs': next_log_probs.mean(),

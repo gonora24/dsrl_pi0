@@ -203,7 +203,7 @@ class CriticGPT(nn.Module):
         self,
         observations,
         actions: Optional[jnp.ndarray] = None,
-        training: bool = False,
+        training: bool = True,
     ) -> jnp.ndarray:
         """
         Args:
@@ -272,7 +272,7 @@ class CriticGPTEnsemble(nn.Module):
         self,
         observations,
         actions: Optional[jnp.ndarray] = None,
-        training: bool = False,
+        training: bool = True,
     ) -> jnp.ndarray:
         """
         Args:
