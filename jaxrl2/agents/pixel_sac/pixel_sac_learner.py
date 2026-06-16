@@ -152,6 +152,7 @@ class PixelSACLearner(Agent):
         self.color_jitter = color_jitter
         self.num_cameras = num_cameras
         self.use_chunky_actor_critic = use_chunky_actor_critic
+        self.use_transformer_actor = use_transformer_actor
         self.dsrl_action_dim = dsrl_action_dim
         self.pi0_action_horizon = pi0_action_horizon
         if use_chunky_actor_critic:
@@ -241,9 +242,16 @@ class PixelSACLearner(Agent):
         actor_params = actor_def_init['params']
         actor_batch_stats = actor_def_init['batch_stats'] if 'batch_stats' in actor_def_init else None
 
+        actor_tx = optax.adam(learning_rate=actor_lr)
+        if use_transformer_actor:
+            # AR actor backprops through 50 transformer steps; clip to avoid NaNs.
+            actor_tx = optax.chain(
+                optax.clip_by_global_norm(2.0),
+                actor_tx,
+            )
         actor = TrainState.create(apply_fn=actor_def.apply,
                                   params=actor_params,
-                                  tx=optax.adam(learning_rate=actor_lr),
+                                  tx=actor_tx,
                                   batch_stats=actor_batch_stats)
 
         if use_transformer_critic:
