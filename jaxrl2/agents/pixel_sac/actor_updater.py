@@ -26,8 +26,8 @@ def update_actor(key: PRNGKey, actor: TrainState, critic: TrainState,
             if type(next_dist) == tuple:
                 next_dist, new_model_state = next_dist
         else:
-            dist = actor.apply_fn({'params': actor_params}, batch['observations'])
-            next_dist = actor.apply_fn({'params': actor_params}, batch['next_observations'])
+            dist = actor.apply_fn({'params': actor_params}, batch['observations'], training=True)
+            # next_dist = actor.apply_fn({'params': actor_params}, batch['next_observations'])
             new_model_state = {}
         
         # For logging only

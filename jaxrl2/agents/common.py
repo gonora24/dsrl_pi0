@@ -93,7 +93,7 @@ def sample_actions_jit(
     input_collections = {'params': actor_params}
     if actor_batch_stats is not None:
         input_collections['batch_stats'] = actor_batch_stats
-    dist = actor_apply_fn(input_collections, observations)
+    dist = actor_apply_fn(input_collections, observations, training=False)
     rng, key = jax.random.split(rng)
     return rng, dist.sample(seed=key)
 
