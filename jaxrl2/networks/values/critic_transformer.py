@@ -56,9 +56,7 @@ class CausalSelfAttention(nn.Module):
         y = jnp.einsum("...qk,...kd->...qd", attn_weights, v)  # [..., n_head, T, head_dim]
 
         # [..., n_head, T, head_dim] -> [..., T, C]
-        print('y before swapaxes and reshape', y.shape)
         y = y.swapaxes(-3, -2).reshape(y.shape[:-3] + (T, C))
-        print('y after swapaxes and reshape', y.shape)
 
         # Output projection with scaled residual init
         y = nn.Dense(
@@ -155,7 +153,6 @@ class CriticGPT(nn.Module):
 
     state_dim: int
     image_dim: int
-    action_dim: int
     action_horizon: int
     n_embd: int
     n_head: int
@@ -221,8 +218,10 @@ class CriticGPT(nn.Module):
         image_features = observations['pixels']                    # [B, image_dim] in latent space already encoded
         state = observations['state']
         state_features = state.reshape(state.shape[0], -1)         # [B, state_dim]
+        if actions is not None and actions.ndim == 2:
+            actions = actions[..., None, :] # [B, 1, action_dim]
 
-        t = 0 if actions is None else actions.shape[-2]
+        t = actions.shape[-2]
         assert t + 1 <= self.action_horizon + 1
 
         # Context token: (state, image) -> [B, 1, n_embd]
@@ -257,7 +256,6 @@ class CriticGPTEnsemble(nn.Module):
 
     state_dim: int
     image_dim: int
-    action_dim: int
     action_horizon: int
     n_embd: int
     n_head: int
@@ -295,7 +293,6 @@ class CriticGPTEnsemble(nn.Module):
         return VmapCritic(
             state_dim=self.state_dim,
             image_dim=self.image_dim,
-            action_dim=self.action_dim,
             action_horizon=self.action_horizon,
             n_embd=self.n_embd,
             n_head=self.n_head,
