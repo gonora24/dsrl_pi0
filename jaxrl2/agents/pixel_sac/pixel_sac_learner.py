@@ -143,6 +143,8 @@ class PixelSACLearner(Agent):
                  actor_transformer_n_layers: int = 3,
                  actor_transformer_n_heads: int = 4,
                  actor_transformer_dropout: float = 0.1,
+                 clip_actor_grad_norm: float = 0.0,
+                 clip_critic_grad_norm: float = 0.0,
                  ):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1812.05905
@@ -159,12 +161,10 @@ class PixelSACLearner(Agent):
             self.action_horizon = pi0_action_horizon
             self.action_chunk_shape = (pi0_action_horizon, dsrl_action_dim)
             self.action_dim = dsrl_action_dim * pi0_action_horizon
-            policy_action_horizon = pi0_action_horizon
         else:
             self.action_horizon = 1
             self.action_chunk_shape = (1, dsrl_action_dim)
             self.action_dim = dsrl_action_dim
-            policy_action_horizon = 1
 
         self.tau = tau
         self.discount = discount
@@ -228,7 +228,7 @@ class PixelSACLearner(Agent):
                 dropout_rate=dropout_rate,
                 low=-action_magnitude,
                 high=action_magnitude,
-                action_horizon=policy_action_horizon,
+                action_horizon=self.action_horizon,
                 dsrl_action_dim=dsrl_action_dim,
             )
 
@@ -243,10 +243,10 @@ class PixelSACLearner(Agent):
         actor_batch_stats = actor_def_init['batch_stats'] if 'batch_stats' in actor_def_init else None
 
         actor_tx = optax.adam(learning_rate=actor_lr)
-        if use_transformer_actor:
+        if clip_actor_grad_norm > 0:
             # AR actor backprops through 50 transformer steps; clip to avoid NaNs.
             actor_tx = optax.chain(
-                optax.clip_by_global_norm(2.0),
+                optax.clip_by_global_norm(clip_actor_grad_norm),
                 actor_tx,
             )
         actor = TrainState.create(apply_fn=actor_def.apply,
@@ -257,14 +257,13 @@ class PixelSACLearner(Agent):
         if use_transformer_critic:
             # use_transformer_critic requires use_chunky_actor_critic=True so that
             # actions arrive as [B, T, action_dim] rather than flattened.
-            assert use_chunky_actor_critic, \
-                "use_transformer_critic requires use_chunky_actor_critic=True"
+            # assert use_chunky_actor_critic, \
+            #     "use_transformer_critic requires use_chunky_actor_critic=True"
             state_dim = int(np.prod(observations['state'].shape[1:]))
             critic_net = CriticGPTEnsemble(
                 state_dim=state_dim,
                 image_dim=latent_dim,
-                action_dim=dsrl_action_dim,
-                action_horizon=pi0_action_horizon,
+                action_horizon=self.action_horizon,
                 n_embd=transformer_n_embd,
                 n_head=transformer_n_head,
                 n_layer=transformer_n_layer,
@@ -290,9 +289,16 @@ class PixelSACLearner(Agent):
 
         critic_params = critic_def_init['params']
         critic_batch_stats = critic_def_init['batch_stats'] if 'batch_stats' in critic_def_init else None
+        if clip_critic_grad_norm > 0:
+            critic_tx = optax.chain(
+                optax.clip_by_global_norm(clip_critic_grad_norm),
+                optax.adam(learning_rate=critic_lr),
+            )
+        else:
+            critic_tx = optax.adam(learning_rate=critic_lr)
         critic = TrainState.create(apply_fn=critic_def.apply,
                                    params=critic_params,
-                                   tx=optax.adam(learning_rate=critic_lr),
+                                   tx=critic_tx,
                                    batch_stats=critic_batch_stats
                                    )
         target_critic_params = copy.deepcopy(critic_params)

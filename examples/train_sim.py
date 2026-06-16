@@ -264,6 +264,8 @@ def main(variant):
         actor_transformer_n_layers=variant.actor_transformer_n_layers,
         actor_transformer_n_heads=variant.actor_transformer_n_heads,
         actor_transformer_dropout=variant.actor_transformer_dropout,
+        clip_actor_grad_norm=variant.clip_actor_grad_norm,
+        clip_critic_grad_norm=variant.clip_critic_grad_norm,
         **train_kwargs,
     )
 
