@@ -64,7 +64,7 @@ class CachedSelfAttention(nn.Module):
             causal_mask = jnp.tril(jnp.ones((T, max_len), dtype=jnp.bool_))
             attn_weights = jnp.where(causal_mask, attn_weights, jnp.finfo(jnp.float32).min)
         attn_weights = jax.nn.softmax(attn_weights, axis=-1)
-        attn_weights = nn.Dropout(rate=self.dropout)(attn_weights, deterministic=not training, rng=jax.random.PRNGKey(0))
+        attn_weights = nn.Dropout(rate=self.dropout)(attn_weights, deterministic=not training)
 
         y = jnp.einsum("...qk,...kd->...qd", attn_weights, v_cache)
 
@@ -72,7 +72,7 @@ class CachedSelfAttention(nn.Module):
         y = y.swapaxes(-3, -2).reshape(y.shape[:-3] + (T, C))
 
         y = nn.Dense(C, use_bias=self.use_bias)(y)
-        y = nn.Dropout(rate=self.dropout)(y, deterministic=not training, rng=jax.random.PRNGKey(0))
+        y = nn.Dropout(rate=self.dropout)(y, deterministic=not training)
         return y, (k_cache, v_cache)
 
 
@@ -97,15 +97,15 @@ class EncoderBlock(nn.Module):
             use_bias=True,
             dropout=self.dropout,
         )(x, kv_cache, cache_len, training=training, mask=mask)
-        x = nn.Dropout(rate=self.dropout)(x, deterministic=not training, rng=jax.random.PRNGKey(0))
+        x = nn.Dropout(rate=self.dropout)(x, deterministic=not training)
         x = nn.LayerNorm()(residual + x)
 
         residual = x
         x = nn.Dense(4 * self.d_model)(x)
         x = jax.nn.relu(x)
-        x = nn.Dropout(rate=self.dropout)(x, deterministic=not training, rng=jax.random.PRNGKey(0))
+        x = nn.Dropout(rate=self.dropout)(x, deterministic=not training)
         x = nn.Dense(self.d_model)(x)
-        x = nn.Dropout(rate=self.dropout)(x, deterministic=not training, rng=jax.random.PRNGKey(0))
+        x = nn.Dropout(rate=self.dropout)(x, deterministic=not training)
         x = nn.LayerNorm()(residual + x)
         return x, kv
 
@@ -197,13 +197,7 @@ class AutoregressiveActorTransformer(nn.Module):
         x = tokens
         new_caches = []
         for i, block in enumerate(self.blocks):
-            x, kv = block(
-                x,
-                training=training,
-                kv_cache=kv_cache[i],
-                cache_len=cache_len,
-                mask=mask,
-            )
+            x, kv = block(x, training=training, kv_cache=kv_cache[i], cache_len=cache_len, mask=mask)
             new_caches.append(kv)
         return x, tuple(new_caches), cache_len + 1
 
@@ -252,6 +246,7 @@ class AutoregressiveActorTransformer(nn.Module):
 
         def step(carry, t):
             buf, kv_cache, cache_len, rng = carry
+            rng, dropout_rng, action_rng = jax.random.split(rng, 3)
             mask = jnp.arange(T + 1)[None, None, None, :] <= t
             mask = jnp.broadcast_to(mask, (B, 1, 1, T + 1))
             token = jax.lax.dynamic_slice(
@@ -267,18 +262,18 @@ class AutoregressiveActorTransformer(nn.Module):
                 cache_len=cache_len,
                 training=training,
                 mask=mask,
+                rngs={'dropout': dropout_rng},
             )
             h_last = h[:, -1, :]
             mu, std = self.apply(variables, h_last, method=self._head)
 
-            rng, subkey = jax.random.split(rng)
             dist = TanhMultivariateNormalDiag(
                 loc=mu,
                 scale_diag=std,
                 low=jnp.array(self.low),
                 high=jnp.array(self.high),
             )
-            action, log_prob = dist.sample_and_log_prob(seed=subkey)                    # [B, action_dim]
+            action, log_prob = dist.sample_and_log_prob(seed=action_rng)               # [B, action_dim]
             # log_prob = dist.log_prob(action)                     # [B]
 
             # Korrekte Methode für action embedding

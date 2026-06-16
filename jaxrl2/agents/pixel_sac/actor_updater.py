@@ -13,7 +13,7 @@ from jaxrl2.types import Params, PRNGKey
 def update_actor(key: PRNGKey, actor: TrainState, critic: TrainState,
                  temp: TrainState, batch: DatasetDict, cross_norm:bool=False, critic_reduction:str='min') -> Tuple[TrainState, Dict[str, float]]:
     
-    key, key_act = jax.random.split(key, num=2)
+    key, key_act, key_dropout = jax.random.split(key, num=3)
 
     def actor_loss_fn(
             actor_params: Params) -> Tuple[jnp.ndarray, Dict[str, float]]:
@@ -26,7 +26,7 @@ def update_actor(key: PRNGKey, actor: TrainState, critic: TrainState,
             if type(next_dist) == tuple:
                 next_dist, new_model_state = next_dist
         else:
-            dist = actor.apply_fn({'params': actor_params}, batch['observations'], training=True)
+            dist = actor.apply_fn({'params': actor_params}, batch['observations'], training=True, rngs={'dropout': key_dropout})
             # next_dist = actor.apply_fn({'params': actor_params}, batch['next_observations'])
             new_model_state = {}
         
