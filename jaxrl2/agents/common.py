@@ -84,18 +84,24 @@ def eval_actions_jit(actor_apply_fn: Callable[..., distrax.Distribution],
     return dist.mode()
 
 
-@partial(jax.jit, static_argnames='actor_apply_fn')
+@partial(jax.jit, static_argnames=('actor_apply_fn', 'marginalize_logprobs'))
 def sample_actions_jit(
         rng: PRNGKey, actor_apply_fn: Callable[..., distrax.Distribution],
         actor_params: Params,
         observations: np.ndarray,
-        actor_batch_stats: Any) -> Tuple[PRNGKey, jnp.ndarray]:
+        actor_batch_stats: Any,
+        marginalize_logprobs: bool = False) -> Tuple[PRNGKey, jnp.ndarray]:
     input_collections = {'params': actor_params}
     if actor_batch_stats is not None:
         input_collections['batch_stats'] = actor_batch_stats
-    dist = actor_apply_fn(input_collections, observations, training=False)
+    dist, means, log_stds = actor_apply_fn(input_collections, observations, training=False)
     rng, key = jax.random.split(rng)
-    return rng, dist.sample(seed=key)
+    if marginalize_logprobs:
+        actions, _ = dist.compute_marginalized_logprobs(means, log_stds, key=key)
+        return rng, actions
+    else:
+        actions = dist.sample(seed=key)
+        return rng, actions
 
 
 class ModuleDict(nn.Module):

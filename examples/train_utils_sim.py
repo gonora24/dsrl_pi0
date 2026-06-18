@@ -333,7 +333,7 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
                     noise = jax.numpy.concatenate([noise, noise_repeat], axis=1)
                 actions_noise = noise[0, :agent.action_chunk_shape[0], :]
             else:
-                actions_noise = agent.sample_actions(obs_dict)
+                actions_noise = agent.sample_actions(obs_dict, marginalize_logprobs=variant.marginalize_logprobs)
                 noise = _prepare_pi0_noise(actions_noise, agent, variant.pi0_action_horizon)
             
             actions = agent_dp.infer(obs_pi_zero, noise=noise)["actions"]
@@ -472,7 +472,7 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
                     # for initial evaluation, we sample from standard gaussian noise to evaluate the base policy's performance
                     noise = jax.random.normal(rng, (1, variant.pi0_action_horizon, agent.dsrl_action_dim))
                 else:
-                    actions_noise = agent.sample_actions(obs_dict)
+                    actions_noise = agent.sample_actions(obs_dict, marginalize_logprobs=variant.marginalize_logprobs)
                     noise = _prepare_pi0_noise(actions_noise, agent, variant.pi0_action_horizon)
                     
                 actions = agent_dp.infer(obs_pi_zero, noise=noise)["actions"]

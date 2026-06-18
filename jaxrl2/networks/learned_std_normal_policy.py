@@ -73,10 +73,15 @@ class TanhMultivariateNormalDiag(distrax.Transformed):
                  loc: jnp.ndarray,
                  scale_diag: jnp.ndarray,
                  low: Optional[jnp.ndarray] = None,
-                 high: Optional[jnp.ndarray] = None):
+                 high: Optional[jnp.ndarray] = None,
+                 dsrl_action_dim: int = 32,
+                 action_horizon: int = 1):
         distribution = distrax.MultivariateNormalDiag(loc=loc,
                                                       scale_diag=scale_diag)
-
+        self.dsrl_action_dim = dsrl_action_dim
+        self.low = low
+        self.high = high
+        self.action_horizon = action_horizon
         layers = []
 
         if not (low is None or high is None):
@@ -116,6 +121,34 @@ class TanhMultivariateNormalDiag(distrax.Transformed):
 
     def mode(self) -> jnp.ndarray:
         return self.bijector.forward(self.distribution.mode())
+    
+    def compute_marginalized_logprobs(self, means, log_stds, key):
+        """Compute marginalized log probabilities for each action chunk independently."""
+        batch = means.shape[0]
+        single_action = self.dsrl_action_dim
+        n_actions = means.shape[1] // single_action
+        actions = jnp.empty_like(means)
+        logprobs = jnp.empty((batch, n_actions))
+
+        for i in range(n_actions):
+            mean_ = means[:, i * single_action : (i + 1) * single_action]
+            log_std_ = log_stds[
+                :,
+                i * single_action : (i + 1) * single_action,
+            ]
+            dist = TanhMultivariateNormalDiag(
+                loc=mean_,
+                scale_diag=jnp.exp(log_std_),
+                low=self.low,
+                high=self.high,
+            )
+
+            action = dist.sample(seed=key)
+            actions = actions.at[:, i * single_action : (i + 1) * single_action].set(
+                action
+            )
+            logprobs = logprobs.at[:, i].set(dist.log_prob(action))
+        return actions, logprobs
 
 class LearnedStdTanhNormalPolicy(nn.Module):
     hidden_dims: Sequence[int]
@@ -127,6 +160,7 @@ class LearnedStdTanhNormalPolicy(nn.Module):
     high: Optional[float] = None
     action_horizon: int = 1
     dsrl_action_dim: int = 32
+    marginalize_logprobs: bool = False
 
     @nn.compact
     def __call__(self,
@@ -147,11 +181,13 @@ class LearnedStdTanhNormalPolicy(nn.Module):
             scale_diag=jnp.exp(log_stds),
             low=self.low,
             high=self.high,
+            dsrl_action_dim=self.dsrl_action_dim,
+            action_horizon=self.action_horizon,
         )
-        if self.action_horizon > 1:
+        if self.action_horizon > 1 and not self.marginalize_logprobs:
             return ChunkedActionDistribution(
                 distribution,
                 self.action_horizon,
                 self.dsrl_action_dim,
             )
-        return distribution
+        return distribution, means, log_stds

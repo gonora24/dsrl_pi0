@@ -117,8 +117,12 @@ class AutoregressiveDistribution:
 
     Satisfies the interface expected by actor_updater.py and critic_updater.py:
       - sample_and_log_prob(seed) -> (actions [B,T,A], log_probs [B])
-      - distribution._loc        -> [B, action_dim]  (non-AR forward, logging only)
-      - distribution._scale_diag -> [B, action_dim]  (non-AR forward, logging only)
+      - compute_marginalized_logprobs(means, log_stds, key) -> (actions [B,T,A], log_probs [B,T])
+      - distribution._loc        -> [B, action_dim]  (first-token forward, logging only)
+      - distribution._scale_diag -> [B, action_dim]  (first-token forward, logging only)
+
+    ``means``/``log_stds`` from ``__call__`` are first-token predictions for logging.
+    ``compute_marginalized_logprobs`` runs the full AR rollout and returns per-step log probs.
     """
 
     def __init__(self, loc, scale_diag, context, variables, module, training: bool = False):
@@ -133,6 +137,9 @@ class AutoregressiveDistribution:
         self._variables = variables
         self._module = module
         self._training = training
+        self.low = module.low
+        self.high = module.high
+        self.action_dim = module.action_dim
 
     def sample_and_log_prob(self, *, seed):
         return self._module.ar_sample(
@@ -144,6 +151,17 @@ class AutoregressiveDistribution:
             self._variables, self._context, seed, training=self._training
         )
         return actions
+
+    def compute_marginalized_logprobs(self, means, log_stds, key):
+        """AR rollout with per-timestep log probs (not summed over the chunk)."""
+        del means, log_stds  # per-step params come from the AR forward pass
+        return self._module.ar_sample(
+            self._variables,
+            self._context,
+            key,
+            training=self._training,
+            per_step_log_probs=True,
+        )
 
 class AutoregressiveActorTransformer(nn.Module):
     state_dim: int
@@ -210,7 +228,7 @@ class AutoregressiveActorTransformer(nn.Module):
         out = self.out(h)
         mu, log_std = jnp.split(out, 2, axis=-1)
         log_std = jnp.clip(log_std, self.log_std_min, self.log_std_max)
-        return mu, jnp.exp(log_std)
+        return mu, log_std, jnp.exp(log_std)
 
     def __call__(self, observations, training: bool = False):
         image_features = observations['pixels']
@@ -229,12 +247,20 @@ class AutoregressiveActorTransformer(nn.Module):
         h, _, _ = self._forward_tokens(
             context, training=training, kv_cache=kv_cache, cache_len=jnp.int32(0)
         )
-        loc, scale = self._head(h[:, -1])
+        loc, log_std, scale = self._head(h[:, -1])
 
         variables = self.variables
-        return AutoregressiveDistribution(loc, scale, context, variables, self, training=training)
+        dist = AutoregressiveDistribution(loc, scale, context, variables, self, training=training)
+        return dist, loc, log_std
 
-    def ar_sample(self, variables, context, rng, training: bool = False):
+    def ar_sample(
+        self,
+        variables,
+        context,
+        rng,
+        training: bool = False,
+        per_step_log_probs: bool = False,
+    ):
         """Autoregressive sampling via jax.lax.scan."""
         B = context.shape[0]
         T = self.chunk_size
@@ -265,7 +291,7 @@ class AutoregressiveActorTransformer(nn.Module):
                 rngs={'dropout': dropout_rng},
             )
             h_last = h[:, -1, :]
-            mu, std = self.apply(variables, h_last, method=self._head)
+            mu, _, std = self.apply(variables, h_last, method=self._head)
 
             dist = TanhMultivariateNormalDiag(
                 loc=mu,
@@ -296,5 +322,8 @@ class AutoregressiveActorTransformer(nn.Module):
             jnp.arange(T),
         )
         actions = jnp.transpose(actions, (1, 0, 2))             # [B, T, action_dim]
-        log_probs = log_probs.sum(axis=0)                        # [B]
+        if per_step_log_probs:
+            log_probs = jnp.transpose(log_probs, (1, 0))         # [B, T]
+        else:
+            log_probs = log_probs.sum(axis=0)                    # [B]
         return actions, log_probs

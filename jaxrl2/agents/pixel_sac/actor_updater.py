@@ -11,14 +11,14 @@ from jaxrl2.types import Params, PRNGKey
 
 
 def update_actor(key: PRNGKey, actor: TrainState, critic: TrainState,
-                 temp: TrainState, batch: DatasetDict, cross_norm:bool=False, critic_reduction:str='min') -> Tuple[TrainState, Dict[str, float]]:
+                 temp: TrainState, batch: DatasetDict, cross_norm:bool=False, critic_reduction:str='min', marginalize_logprobs:bool=False) -> Tuple[TrainState, Dict[str, float]]:
     
     key, key_act, key_dropout = jax.random.split(key, num=3)
 
     def actor_loss_fn(
             actor_params: Params) -> Tuple[jnp.ndarray, Dict[str, float]]:
         if hasattr(actor, 'batch_stats') and actor.batch_stats is not None:
-            dist, new_model_state = actor.apply_fn({'params': actor_params, 'batch_stats': actor.batch_stats}, batch['observations'], mutable=['batch_stats'])
+            dist, means, log_stds, new_model_state = actor.apply_fn({'params': actor_params, 'batch_stats': actor.batch_stats}, batch['observations'], mutable=['batch_stats'])
             if cross_norm:
                 next_dist = actor.apply_fn({'params': actor_params, 'batch_stats': actor.batch_stats}, batch['next_observations'], mutable=['batch_stats'])
             else:
@@ -26,7 +26,7 @@ def update_actor(key: PRNGKey, actor: TrainState, critic: TrainState,
             if type(next_dist) == tuple:
                 next_dist, new_model_state = next_dist
         else:
-            dist = actor.apply_fn({'params': actor_params}, batch['observations'], training=True, rngs={'dropout': key_dropout})
+            dist, means, log_stds = actor.apply_fn({'params': actor_params}, batch['observations'], training=True, rngs={'dropout': key_dropout})
             # next_dist = actor.apply_fn({'params': actor_params}, batch['next_observations'])
             new_model_state = {}
         
@@ -35,9 +35,11 @@ def update_actor(key: PRNGKey, actor: TrainState, critic: TrainState,
         std_diag_dist = dist.distribution._scale_diag
         mean_dist_norm = jnp.linalg.norm(mean_dist, axis=-1)
         std_dist_norm = jnp.linalg.norm(std_diag_dist, axis=-1)
-
         
-        actions, log_probs = dist.sample_and_log_prob(seed=key_act)
+        if marginalize_logprobs:
+            actions, log_probs = dist.compute_marginalized_logprobs(means, log_stds, key=key_act)
+        else:
+            actions, log_probs = dist.sample_and_log_prob(seed=key_act)
 
         if hasattr(critic, 'batch_stats') and critic.batch_stats is not None:
             qs, _ = critic.apply_fn({'params': critic.params, 'batch_stats': critic.batch_stats}, batch['observations'],
@@ -51,6 +53,15 @@ def update_actor(key: PRNGKey, actor: TrainState, critic: TrainState,
             q = qs.mean(axis=0)
         else:
             raise ValueError(f"Invalid critic reduction: {critic_reduction}")
+        if marginalize_logprobs:
+            discount = batch['discount'][0] ** jnp.arange(dist.action_horizon)
+            assert log_probs.shape == (actions.shape[0], dist.action_horizon)
+            cum_log_prob = log_probs * discount
+            nonfinite_action_logprobs = 1 - jnp.mean(jnp.isfinite(log_probs))
+            cum_log_prob = jnp.nan_to_num(
+                        cum_log_prob, nan=0, posinf=0, neginf=0
+                    )
+            log_probs = cum_log_prob.sum(axis=1).reshape(actions.shape[0], 1)
         actor_loss = (log_probs * temp.apply_fn({'params': temp.params}) - q).mean()
 
         things_to_log = {

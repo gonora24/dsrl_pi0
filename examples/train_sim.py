@@ -266,6 +266,7 @@ def main(variant):
         actor_transformer_dropout=variant.actor_transformer_dropout,
         clip_actor_grad_norm=variant.clip_actor_grad_norm,
         clip_critic_grad_norm=variant.clip_critic_grad_norm,
+        marginalize_logprobs=variant.marginalize_logprobs,
         **train_kwargs,
     )
 

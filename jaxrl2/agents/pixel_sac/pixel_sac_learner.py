@@ -39,13 +39,13 @@ from jaxrl2.utils.target_update import soft_target_update
 class TrainState(train_state.TrainState):
     batch_stats: Any
 
-@functools.partial(jax.jit, static_argnames=('critic_reduction', 'color_jitter',  'aug_next', 'num_cameras', 'chunk_reward'))
+@functools.partial(jax.jit, static_argnames=('critic_reduction', 'color_jitter', 'aug_next', 'num_cameras', 'chunk_reward', 'marginalize_logprobs'))
 def _update_jit(
     rng: PRNGKey, actor: TrainState, critic: TrainState,
     target_critic_params: Params, temp: TrainState, batch: TrainState,
     discount: float, tau: float, target_entropy: float,
     critic_reduction: str, color_jitter: bool, aug_next: bool, num_cameras: int,
-    chunk_reward: bool,
+    chunk_reward: bool, marginalize_logprobs: bool,
 ) -> Tuple[PRNGKey, TrainState, TrainState, Params, TrainState, Dict[str,float]]:
     aug_pixels = batch['observations']['pixels']
     aug_next_pixels = batch['next_observations']['pixels']
@@ -83,11 +83,11 @@ def _update_jit(
     target_critic = critic.replace(params=target_critic_params)
     new_critic, critic_info = update_critic(
         key, actor, critic, target_critic, temp, batch, discount,
-        critic_reduction=critic_reduction, chunk_reward=chunk_reward)
+        critic_reduction=critic_reduction, chunk_reward=chunk_reward, marginalize_logprobs=marginalize_logprobs)
     new_target_critic_params = soft_target_update(new_critic.params, target_critic_params, tau)
     
     key, rng = jax.random.split(rng)
-    new_actor, actor_info = update_actor(key, actor, new_critic, temp, batch, critic_reduction=critic_reduction)
+    new_actor, actor_info = update_actor(key, actor, new_critic, temp, batch, critic_reduction=critic_reduction, marginalize_logprobs=marginalize_logprobs)
     new_temp, alpha_info = update_temperature(temp, actor_info['entropy'], target_entropy)
 
     return rng, new_actor, new_critic, new_target_critic_params, new_temp, {
@@ -145,6 +145,7 @@ class PixelSACLearner(Agent):
                  actor_transformer_dropout: float = 0.1,
                  clip_actor_grad_norm: float = 0.0,
                  clip_critic_grad_norm: float = 0.0,
+                 marginalize_logprobs: bool = False,
                  ):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1812.05905
@@ -170,7 +171,8 @@ class PixelSACLearner(Agent):
         self.discount = discount
         self.critic_reduction = critic_reduction
         self.chunk_reward = chunk_reward
-
+        self.marginalize_logprobs = marginalize_logprobs
+        
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key, temp_key = jax.random.split(rng, 4)
 
@@ -230,6 +232,7 @@ class PixelSACLearner(Agent):
                 high=action_magnitude,
                 action_horizon=self.action_horizon,
                 dsrl_action_dim=dsrl_action_dim,
+                marginalize_logprobs=marginalize_logprobs,
             )
 
         actor_def = PixelMultiplexer(encoder=encoder_def,
@@ -328,7 +331,8 @@ class PixelSACLearner(Agent):
 
     def update(self, batch: FrozenDict) -> Dict[str, float]:
         new_rng, new_actor, new_critic, new_target_critic, new_temp, info = _update_jit(
-            self._rng, self._actor, self._critic, self._target_critic_params, self._temp, batch, self.discount, self.tau, self.target_entropy, self.critic_reduction, self.color_jitter, self.aug_next, self.num_cameras, self.chunk_reward
+            self._rng, self._actor, self._critic, self._target_critic_params, self._temp, batch, self.discount, self.tau, self.target_entropy, 
+            self.critic_reduction, self.color_jitter, self.aug_next, self.num_cameras, self.chunk_reward, self.marginalize_logprobs
             )
 
         self._rng = new_rng

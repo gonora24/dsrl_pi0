@@ -13,9 +13,13 @@ def update_critic(
         key: PRNGKey, actor: TrainState, critic: TrainState,
         target_critic: TrainState, temp: TrainState, batch: DatasetDict,
         discount: float, backup_entropy: bool = False,
-        critic_reduction: str = 'min', chunk_reward: bool = False) -> Tuple[TrainState, Dict[str, float]]:
-    dist = actor.apply_fn({'params': actor.params}, batch['next_observations'])
-    next_actions, next_log_probs = dist.sample_and_log_prob(seed=key)
+        critic_reduction: str = 'min', chunk_reward: bool = False,
+        marginalize_logprobs: bool = False) -> Tuple[TrainState, Dict[str, float]]:
+    dist, means, log_stds = actor.apply_fn({'params': actor.params}, batch['next_observations'])
+    if marginalize_logprobs:
+        next_actions, next_log_probs = dist.compute_marginalized_logprobs(means, log_stds, key=key)
+    else:
+        next_actions, next_log_probs = dist.sample_and_log_prob(seed=key)
     next_qs = target_critic.apply_fn({'params': target_critic.params},
                                      batch['next_observations'], next_actions)
 
