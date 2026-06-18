@@ -4,9 +4,9 @@
 #SBATCH --gres=gpu:1 
 #SBATCH --job-name=dsrl_pi05_libero_10_task9_chunk
 
-module load devel/miniforge
-conda deactivate
-conda activate dsrl_pi0
+# module load devel/miniforge
+# conda deactivate
+# conda activate dsrl_pi0
 export WANDB_API_KEY='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'
 export WANDB_EMAIL='noragorhan@gmail.com'
 export WANDB_USERNAME='noragorhan'
@@ -16,8 +16,8 @@ device_id=0
 wandb_mode=online  # online or offline
 export WANDB_MODE=${wandb_mode}
 
-export PYTHONPATH="${PYTHONPATH}:/pfs/data6/home/ka/ka_anthropomatik/ka_eu3660/projects/dsrl_pi0/"
-export PYTHONPATH=$PYTHONPATH:/pfs/data6/home/ka/ka_anthropomatik/ka_eu3660/projects/dsrl_pi0/LIBERO
+export PYTHONPATH="${PYTHONPATH}:/home/i53/student/gorhan/Masterarbeit/dsrl_pi0"
+export PYTHONPATH=$PYTHONPATH:/home/i53/student/gorhan/Masterarbeit/dsrl_pi0/LIBERO
 
 export DISPLAY=:0
 export MUJOCO_GL=egl
@@ -36,13 +36,13 @@ pip install "transformers==4.53.2"
 python3 examples/launch_train_sim.py \
 --algorithm pixel_sac \
 --env libero \
---prefix dsrl_pi05_libero_10_task9 \
---suffix chunkrewardcriticactor_mlp \
+--prefix dsrl_pi05_libero_90_task29 \
+--suffix chunkrewardcriticactor_mlp_5replan \
 --wandb_project ${proj_name} \
 --batch_size 256 \
 --discount 0.999 \
 --seed 0 \
---max_steps 500000  \
+--max_steps 1000000  \
 --eval_interval 10000 \
 --checkpoint_interval -1 \
 --log_interval 500 \
@@ -53,8 +53,8 @@ python3 examples/launch_train_sim.py \
 --action_magnitude 1.0 \
 --query_freq 5 \
 --hidden_dims 128 \
---libero_suite "libero_10" \
---libero_task_id 9 \
+--libero_suite "libero_90" \
+--libero_task_id 29 \
 --pi0_checkpoint pi05_libero \
 --chunk_reward 1 \
 --use_chunky_actor_critic 1 \

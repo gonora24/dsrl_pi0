@@ -99,6 +99,7 @@ class WandBLogger(object):
             except:
                 print('wandb_config.py not found, using default wandb config')
             os.environ.setdefault("WANDB_MODE", "online")
+            team = os.environ.get('WANDB_TEAM', None)
             wandb.init(
                 config=variant,
                 project=project,
