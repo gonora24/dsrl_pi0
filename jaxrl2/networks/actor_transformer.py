@@ -140,6 +140,7 @@ class AutoregressiveDistribution:
         self.low = module.low
         self.high = module.high
         self.action_dim = module.action_dim
+        self.action_horizon = module.chunk_size
 
     def sample_and_log_prob(self, *, seed):
         return self._module.ar_sample(
