@@ -131,6 +131,7 @@ class PixelSACLearner(Agent):
                  chunk_reward: bool = False,
                  use_chunky_actor_critic: bool = False,
                  pi0_action_horizon: int = 50,
+                 critic_hidden_dims: Sequence[int] = (128, 128, 128),
                  dsrl_action_dim: int = 32,
                  use_transformer_critic: bool = False,
                  transformer_n_embd: int = 256,
@@ -277,7 +278,7 @@ class PixelSACLearner(Agent):
             )
         else:
             critic_net = StateActionEnsemble(
-                hidden_dims,
+                critic_hidden_dims,
                 num_qs=num_qs,
                 use_chunky_actor_critic=use_chunky_actor_critic,
             )

@@ -253,6 +253,7 @@ def main(variant):
         chunk_reward=bool(variant.chunk_reward),
         use_chunky_actor_critic=variant.use_chunky_actor_critic,
         pi0_action_horizon=variant.pi0_action_horizon,
+        critic_hidden_dims=tuple(variant.critic_hidden_dims),
         use_transformer_critic=variant.use_transformer_critic,
         transformer_n_embd=variant.transformer_n_embd,
         transformer_n_head=variant.transformer_n_head,
