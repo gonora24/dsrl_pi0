@@ -189,5 +189,5 @@ class LearnedStdTanhNormalPolicy(nn.Module):
                 distribution,
                 self.action_horizon,
                 self.dsrl_action_dim,
-            )
+            ), means, log_stds
         return distribution, means, log_stds

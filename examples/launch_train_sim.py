@@ -31,7 +31,7 @@ if __name__ == '__main__':
     parser.add_argument('--transformer_n_embd', default=256, help='transformer embedding dimension', type=int)
     parser.add_argument('--transformer_n_head', default=4, help='transformer number of heads', type=int)
     parser.add_argument('--transformer_n_layer', default=4, help='transformer number of layers', type=int)
-    parser.add_argument('--transformer_use_layer_norm', default=1, help='transformer use layer norm', type=int)
+    parser.add_argument('--transformer_weight_norm', default=1, help='transformer use weight norm', type=int)
     parser.add_argument('--transformer_use_bias', default=0, help='transformer use bias', type=int)
     parser.add_argument('--use_transformer_actor', default=0, help='use transformer actor', type=int)
     parser.add_argument('--actor_transformer_d_model', default=128, help='actor transformer embedding dimension', type=int)

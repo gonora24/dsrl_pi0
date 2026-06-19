@@ -136,8 +136,8 @@ class PixelSACLearner(Agent):
                  transformer_n_embd: int = 256,
                  transformer_n_head: int = 4,
                  transformer_n_layer: int = 4,
-                 transformer_use_layer_norm: bool = True,
                  transformer_use_bias: bool = False,
+                 transformer_weight_norm: bool = False,
                  use_transformer_actor: bool = False,
                  actor_transformer_d_model: int = 256,
                  actor_transformer_n_layers: int = 3,
@@ -271,7 +271,7 @@ class PixelSACLearner(Agent):
                 n_head=transformer_n_head,
                 n_layer=transformer_n_layer,
                 dropout=dropout_rate or 0.0,
-                use_layer_norm=transformer_use_layer_norm,
+                weight_norm=transformer_weight_norm,
                 use_bias=transformer_use_bias,
                 num_qs=num_qs,
             )

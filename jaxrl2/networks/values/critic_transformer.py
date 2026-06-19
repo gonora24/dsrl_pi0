@@ -14,7 +14,42 @@ import flax.linen as nn
 from flax import nnx
 import jax
 import jax.numpy as jnp
+from flax.linen.attention import make_causal_mask
 
+class MultiHeadAttention(nn.Module):
+    """
+    A module to perform multi-head attention using Flax's linen library.
+    This combines multiple attention heads into a single operation.
+    """
+
+    num_heads: int
+    n_embed: int
+    dropout_rate: float
+    weight_norm: bool
+
+    @nn.compact
+    def __call__(self, x, training):
+        """
+        Apply multi-head attention to the input tensor.
+
+        Parameters:
+            x (tensor): Input tensor.
+            training (bool): Flag to indicate if the model is training (affects dropout).
+
+        Returns:
+            tensor: Output tensor after applying multi-head attention and a dense layer.
+        """
+        mask = make_causal_mask(x[..., 0])
+        x = nn.MultiHeadDotProductAttention(
+            num_heads=self.num_heads,
+            dropout_rate=self.dropout_rate,
+            deterministic=not training,
+        )(x, mask=mask)
+        if self.weight_norm:
+            x = nn.WeightNorm(nn.Dense(self.n_embed))(x)
+        else:
+            x = nn.Dense(self.n_embed)(x)
+        return x
 
 class CausalSelfAttention(nn.Module):
     """Multi-head causal self-attention with fused QKV projection."""
@@ -73,19 +108,20 @@ class GPTMLP(nn.Module):
     n_embd: int
     use_bias: bool
     dropout: float
-    residual_std: float
+    weight_norm: bool
 
     @nn.compact
     def __call__(self, x: jnp.ndarray, training: bool = False) -> jnp.ndarray:
-        x = nn.Dense(
-            4 * self.n_embd, use_bias=self.use_bias,
-            kernel_init=nn.initializers.normal(0.02),
-        )(x)
+        if self.weight_norm:
+            x = nn.WeightNorm(nn.Dense(4 * self.n_embd, use_bias=self.use_bias))(x)
+        else:
+            x = nn.Dense(4 * self.n_embd, use_bias=self.use_bias)(x)
+
         x = jax.nn.gelu(x)
-        x = nn.Dense(
-            self.n_embd, use_bias=self.use_bias,
-            kernel_init=nn.initializers.normal(self.residual_std),
-        )(x)
+        if self.weight_norm:
+            x = nn.WeightNorm(nn.Dense(self.n_embd, use_bias=self.use_bias))(x)
+        else:
+            x = nn.Dense(self.n_embd, use_bias=self.use_bias)(x)
         x = nn.Dropout(rate=self.dropout)(x, deterministic=not training)
         return x
 
@@ -97,42 +133,58 @@ class GPTBlock(nn.Module):
     n_head: int
     use_bias: bool
     dropout: float
-    use_layer_norm: bool
-    residual_std: float
+    weight_norm: bool
 
-    def setup(self):
-        # self.attn = nnx.MultiHeadAttention(
-        #     num_heads=self.n_head,
-        #     in_features=self.n_embd,
-        #     use_bias=self.use_bias,
-        #     dropout_rate=self.dropout,
-        #     rngs=nnx.Rngs(0),
-        #     decode=False,
-        # )
-        self.attn = CausalSelfAttention(
-            n_embd=self.n_embd,
-            n_head=self.n_head,
-            use_bias=self.use_bias,
-            dropout=self.dropout,
-            residual_std=self.residual_std,
-        )
-        self.mlp = GPTMLP(
-            n_embd=self.n_embd,
-            use_bias=self.use_bias,
-            dropout=self.dropout,
-            residual_std=self.residual_std,
-        )
-        if self.use_layer_norm:
-            self.ln_1 = nn.LayerNorm(use_bias=self.use_bias)
-            self.ln_2 = nn.LayerNorm(use_bias=self.use_bias)
-
+    # def setup(self):
+    #     # self.attn = nnx.MultiHeadAttention(
+    #     #     num_heads=self.n_head,
+    #     #     in_features=self.n_embd,
+    #     #     use_bias=self.use_bias,
+    #     #     dropout_rate=self.dropout,
+    #     #     rngs=nnx.Rngs(0),
+    #     #     decode=False,
+    #     # )
+    #     self.attn = CausalSelfAttention(
+    #         n_embd=self.n_embd,
+    #         n_head=self.n_head,
+    #         use_bias=self.use_bias,
+    #         dropout=self.dropout,
+    #         residual_std=self.residual_std,
+    #     )
+    #     self.mlp = GPTMLP(
+    #         n_embd=self.n_embd,
+    #         use_bias=self.use_bias,
+    #         dropout=self.dropout,
+    #         residual_std=self.residual_std,
+    #     )
+    #     if self.use_layer_norm:
+    #         self.ln_1 = nn.LayerNorm(use_bias=self.use_bias)
+    #         self.ln_2 = nn.LayerNorm(use_bias=self.use_bias)
+    @nn.compact
     def __call__(self, x: jnp.ndarray, training: bool = False) -> jnp.ndarray:
-        if self.use_layer_norm:
-            x = x + self.attn(self.ln_1(x), training=training)
-            x = x + self.mlp(self.ln_2(x), training=training)
-        else:
-            x = x + self.attn(x, training=training)
-            x = x + self.mlp(x, training=training)
+        attn = MultiHeadAttention(
+            num_heads=self.n_head,
+            n_embed=self.n_embd,
+            dropout_rate=self.dropout,
+            weight_norm=self.weight_norm,
+        )
+        ff = GPTMLP(
+            n_embd=self.n_embd,
+            use_bias=self.use_bias,
+            dropout=self.dropout,
+            weight_norm=self.weight_norm,
+        )
+        norm = nn.LayerNorm(use_bias=self.use_bias)
+        x = x + attn(norm(x), training=training)
+        norm = nn.LayerNorm(use_bias=self.use_bias)
+        x = x + ff(norm(x), training=training)
+        return x
+        # if self.use_layer_norm:
+        #     x = x + self.attn(self.ln_1(x), training=training)
+        #     x = x + self.mlp(self.ln_2(x), training=training)
+        # else:
+        #     x = x + self.attn(x, training=training)
+        #     x = x + self.mlp(x, training=training)
         return x
 
 
@@ -158,44 +210,40 @@ class CriticGPT(nn.Module):
     n_head: int
     n_layer: int
     dropout: float
-    use_layer_norm: int
+    weight_norm: bool
     use_bias: int
 
-    def setup(self):
-        residual_std = 0.02 / math.sqrt(2 * self.n_layer)
+    # def setup(self):
+    #     self.context_proj = nn.Dense(
+    #         self.n_embd, use_bias=False,
+    #         kernel_init=nn.initializers.normal(0.02),
+    #     )
+    #     self.action_encoder = nn.Dense(
+    #         self.n_embd, use_bias=False,
+    #         kernel_init=nn.initializers.normal(0.02),
+    #     )
+    #     self.pos_enc = nn.Embed(
+    #         num_embeddings=self.action_horizon + 1,
+    #         features=self.n_embd,
+    #         embedding_init=nn.initializers.normal(0.02),
+    #     )
+    #     self.drop = nn.Dropout(rate=self.dropout)
+    #     self.blocks = [
+    #         GPTBlock(
+    #             n_embd=self.n_embd,
+    #             n_head=self.n_head,
+    #             use_bias=self.use_bias,
+    #             dropout=self.dropout,
+    #             weight_norm=self.weight_norm,
+    #         )
+    #         for _ in range(self.n_layer)
+    #     ]
+    #     self.output_layer = nn.Dense(
+    #         1, use_bias=False,
+    #         kernel_init=nn.initializers.normal(0.02),
+    #     )
 
-        self.context_proj = nn.Dense(
-            self.n_embd, use_bias=False,
-            kernel_init=nn.initializers.normal(0.02),
-        )
-        self.action_encoder = nn.Dense(
-            self.n_embd, use_bias=False,
-            kernel_init=nn.initializers.normal(0.02),
-        )
-        self.pos_enc = nn.Embed(
-            num_embeddings=self.action_horizon + 1,
-            features=self.n_embd,
-            embedding_init=nn.initializers.normal(0.02),
-        )
-        self.drop = nn.Dropout(rate=self.dropout)
-        self.blocks = [
-            GPTBlock(
-                n_embd=self.n_embd,
-                n_head=self.n_head,
-                use_bias=self.use_bias,
-                dropout=self.dropout,
-                use_layer_norm=self.use_layer_norm,
-                residual_std=residual_std,
-            )
-            for _ in range(self.n_layer)
-        ]
-        if self.use_layer_norm:
-            self.ln_f = nn.LayerNorm(use_bias=self.use_bias)
-        self.output_layer = nn.Dense(
-            1, use_bias=False,
-            kernel_init=nn.initializers.normal(0.02),
-        )
-
+    @nn.compact
     def __call__(
         self,
         observations,
@@ -226,27 +274,40 @@ class CriticGPT(nn.Module):
 
         # Context token: (state, image) -> [B, 1, n_embd]
         context_feat = jnp.concatenate([state_features, image_features], axis=-1)
-        context_emb = self.context_proj(context_feat)[..., None, :]  # [B, 1, n_embd]
+        if self.weight_norm:
+            context_emb = nn.WeightNorm(nn.Dense(self.n_embd, use_bias=self.use_bias))(context_feat)[..., None, :]  # [B, 1, n_embd]
+        else:
+            context_emb = nn.Dense(self.n_embd, use_bias=self.use_bias)(context_feat)[..., None, :]  # [B, 1, n_embd]
 
         if actions is not None:
-            action_emb = self.action_encoder(actions)                    # [B, T, n_embd]
-            seq_emb = jnp.concatenate([context_emb, action_emb], axis=-2)  # [B, 1+T, n_embd]
+            if self.weight_norm:
+                action_emb = nn.WeightNorm(nn.Dense(self.n_embd, use_bias=self.use_bias))(actions)                  # [B, T, n_embd]
+            else:
+                action_emb = nn.Dense(self.n_embd, use_bias=self.use_bias)(actions)                  # [B, T, n_embd]
+            seq_emb = jnp.concatenate([context_emb, action_emb], axis=1)  # [B, 1+T, n_embd]
         else:
             seq_emb = context_emb                                        # [B, 1, n_embd]
 
         # Relative positional embeddings: context=0, actions=1..T
         pos = jnp.arange(1 + t)                                    # [1+T]
-        pos_emb = self.pos_enc(pos)                                 # [1+T, n_embd]
+        pos_emb = nn.Embed(num_embeddings=self.action_horizon + 1, features=self.n_embd)(pos)                                 # [1+T, n_embd]
 
-        x = self.drop(seq_emb + pos_emb, deterministic=not training)
+        x = nn.Dropout(rate=self.dropout)(seq_emb + pos_emb, deterministic=not training)
 
-        for block in self.blocks:
-            x = block(x, training=training)
+        for _ in range(self.n_layer):
+            x = GPTBlock(
+                n_embd=self.n_embd,
+                n_head=self.n_head,
+                use_bias=self.use_bias,
+                dropout=self.dropout,
+                weight_norm=self.weight_norm,
+            )(x, training=training)
+        
+        if self.weight_norm:
+            x = nn.WeightNorm(nn.Dense(1, use_bias=self.use_bias))(x)
+        else:
+            x = nn.Dense(1, use_bias=self.use_bias)(x)
 
-        if self.use_layer_norm:
-            x = self.ln_f(x)
-
-        x = self.output_layer(x)  # [B, 1+T, 1]
         # Last token sees all actions -> scalar Q per sample
         return x[..., -1, 0] # [B]
 
@@ -261,7 +322,7 @@ class CriticGPTEnsemble(nn.Module):
     n_head: int
     n_layer: int
     dropout: float
-    use_layer_norm: int
+    weight_norm: int
     use_bias: int
     num_qs: int = 2
 
@@ -298,6 +359,6 @@ class CriticGPTEnsemble(nn.Module):
             n_head=self.n_head,
             n_layer=self.n_layer,
             dropout=self.dropout,
-            use_layer_norm=self.use_layer_norm,
+            weight_norm=bool(self.weight_norm),
             use_bias=self.use_bias,
         )(observations, actions, training)            # [num_qs, B] — Q-value of the complete action chunk for each ensemble member

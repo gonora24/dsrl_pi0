@@ -245,7 +245,7 @@ def main(variant):
     if train_kwargs.pop('cosine_decay', False):
         train_kwargs['decay_steps'] = variant.max_steps
     if variant.use_transformer_critic:
-        train_kwargs['num_qs'] = 1
+        train_kwargs['num_qs'] = 2
     agent = PixelSACLearner(
         variant.seed,
         sample_obs,
@@ -257,7 +257,7 @@ def main(variant):
         transformer_n_embd=variant.transformer_n_embd,
         transformer_n_head=variant.transformer_n_head,
         transformer_n_layer=variant.transformer_n_layer,
-        transformer_use_layer_norm=variant.transformer_use_layer_norm,
+        transformer_weight_norm=variant.transformer_weight_norm,
         transformer_use_bias=variant.transformer_use_bias,
         use_transformer_actor=variant.use_transformer_actor,
         actor_transformer_d_model=variant.actor_transformer_d_model,
