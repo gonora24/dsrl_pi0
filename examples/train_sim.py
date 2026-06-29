@@ -15,6 +15,7 @@ import numpy as np
 import gymnasium as gym
 import gym_aloha
 from gym.spaces import Dict, Box
+# import metaworld
 
 from libero.libero import benchmark
 from libero.libero import get_libero_path
@@ -58,6 +59,11 @@ CHECKPOINTS = {
     "rlinf_hf_pi05": {
         "config": "pi05_libero",
         "hf_repo": "RLinf/RLinf-Pi05-LIBERO-SFT",
+        "pytorch": True,
+    },
+    "rlinf_hf_pi05_metaworld": {
+        "config": "pi05_libero",
+        "hf_repo": "RLinf/RLinf-Pi05-MetaWorld-SFT",
         "pytorch": True,
     },
 }
@@ -111,6 +117,12 @@ def shard_batch(batch, sharding):
     )
 
 
+def _get_metaworld_env(task_name: str, seed: int):
+    """Initializes and returns the MetaWorld environment, along with the task description."""
+    env = gym.make("Meta-World/MT1", env_name=task_name, render_mode="rgb_array")
+    task_description = ""
+    return env, task_description
+
 class DummyEnv(gym.ObservationWrapper):
 
     def __init__(self, variant):
@@ -123,6 +135,8 @@ class DummyEnv(gym.ObservationWrapper):
                 state_dim = 8
             elif variant.env == 'aloha_cube':
                 state_dim = 14
+            elif variant.env == 'metaworld':
+                state_dim = 4
             obs_dict['state'] = Box(low=-1.0, high=1.0, shape=(state_dim, 1), dtype=np.float32)
         self.observation_space = Dict(obs_dict)
         if variant.use_chunky_actor_critic:
@@ -185,6 +199,14 @@ def main(variant):
             "libero_90": 400,
         }
         variant.max_timesteps = libero_max_timesteps.get(variant.libero_suite, 400)
+    elif variant.env == 'metaworld':
+        variant.max_timesteps = 400
+        env, task_description = _get_metaworld_env(variant.metaworld_task_name, variant.seed)
+        eval_env = copy.deepcopy(env)
+        variant.task_description = task_description
+        variant.env_max_reward = 1
+        if variant.chunk_reward:
+            variant.env_max_reward = 0
     elif variant.env == 'aloha_cube':
         from gymnasium.envs.registration import register
         register(
@@ -204,7 +226,7 @@ def main(variant):
     wandb_output_dir = tempfile.mkdtemp()
     wandb_logger = WandBLogger(variant.prefix != '', variant, variant.wandb_project, experiment_id=expname, output_dir=wandb_output_dir, group_name=group_name)
     pi0_ckpt = getattr(variant, "pi0_checkpoint", "openpi")
-    if variant.env == 'libero':
+    if variant.env == 'libero' or variant.env == 'metaworld':
         if pi0_ckpt in CHECKPOINTS:
             openpi_config_name = CHECKPOINTS[pi0_ckpt]["config"]
         else:
@@ -225,16 +247,14 @@ def main(variant):
     print('sample action shape', sample_action.shape)
     
 
-    if variant.env == 'libero':
+    if variant.env == 'libero' or variant.env == 'metaworld':
         checkpoint_dir = _load_pi0_checkpoint(pi0_ckpt)
     elif variant.env == 'aloha_cube':
         checkpoint_dir = download.maybe_download("s3://openpi-assets/checkpoints/pi0_aloha_sim")
     else:
         raise NotImplementedError()
 
-    if variant.env == 'libero':
-        config = openpi_train_config
-    elif variant.env == 'pi05_libero':
+    if variant.env == 'libero' or variant.env == 'metaworld':
         config = openpi_train_config
     else:
         config = openpi_train_config
@@ -245,7 +265,7 @@ def main(variant):
     if train_kwargs.pop('cosine_decay', False):
         train_kwargs['decay_steps'] = variant.max_steps
     if variant.use_transformer_critic:
-        train_kwargs['num_qs'] = 2
+        train_kwargs['num_qs'] = 4
     agent = PixelSACLearner(
         variant.seed,
         sample_obs,
@@ -268,6 +288,7 @@ def main(variant):
         clip_actor_grad_norm=variant.clip_actor_grad_norm,
         clip_critic_grad_norm=variant.clip_critic_grad_norm,
         marginalize_logprobs=variant.marginalize_logprobs,
+        use_chunk_actor_transformer=variant.use_chunk_actor_transformer,
         **train_kwargs,
     )
 

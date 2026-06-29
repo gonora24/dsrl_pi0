@@ -293,6 +293,8 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
         obs = env.reset()
     elif 'aloha' in variant.env:
         obs, _ = env.reset()
+    elif 'metaworld' in variant.env:
+        obs, _ = env.reset()
     
     image_list = [] # for visualization
     env_rewards = []
@@ -304,6 +306,7 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
     current_chunk_terminations = []
 
     for t in range(max_timesteps):
+        # jax.debug.print('obs: {obs}', obs=obs.keys())
         curr_image = obs_to_img(obs, variant)
         
         qpos = obs_to_qpos(obs, variant)
@@ -436,6 +439,8 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
     episode_lens = []
 
     rng = jax.random.PRNGKey(variant.seed+456)
+    video_log_interval = 10
+    log_video = True
 
     for rollout_id in range(variant.eval_episodes):
         if 'libero' in variant.env:
@@ -507,7 +512,8 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
                 
         print(f'Rollout {rollout_id} : {episode_return=}, Success: {is_success}')
         video = np.stack(image_list).transpose(0, 3, 1, 2)
-        wandb_logger.log({f'eval_video/{rollout_id}': wandb.Video(video, fps=50, format="gif")}, step=i)
+        if log_video and t % video_log_interval == 0:
+            wandb_logger.log({f'eval_video/{rollout_id}': wandb.Video(video, fps=50, format="gif")}, step=i)
 
 
     success_rate = np.mean(np.array(success_rates))
