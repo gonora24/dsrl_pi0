@@ -42,6 +42,8 @@ if __name__ == '__main__':
     parser.add_argument('--clip_critic_grad_norm', default=0.0, help='clip critic gradient norm', type=float)
     parser.add_argument('--libero_suite', default="libero_90", help='libero task suite', type=str)
     parser.add_argument('--libero_task_id', default=57, help='which libero task in suite', type=int)
+    parser.add_argument('--metaworld_task_name', default='basketball-v3', help='which metaworld task', type=str)
+    parser.add_argument('--use_chunk_actor_transformer', default=0, help='use chunk actor transformer', type=int)
     parser.add_argument('--marginalize_logprobs', default=0, help='marginalize logprobs', type=int)
     parser.add_argument('--critic_hidden_dims', default=[128, 128, 128], help='critic hidden dimensions', nargs="+", type=int)
     parser.add_argument(

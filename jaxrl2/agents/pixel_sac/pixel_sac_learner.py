@@ -140,6 +140,7 @@ class PixelSACLearner(Agent):
                  transformer_use_bias: bool = False,
                  transformer_weight_norm: bool = False,
                  use_transformer_actor: bool = False,
+                 use_chunk_actor_transformer: bool = False,
                  actor_transformer_d_model: int = 256,
                  actor_transformer_n_layers: int = 3,
                  actor_transformer_n_heads: int = 4,
@@ -233,6 +234,10 @@ class PixelSACLearner(Agent):
                 high=action_magnitude,
                 action_horizon=self.action_horizon,
                 dsrl_action_dim=dsrl_action_dim,
+                use_transformer=use_chunk_actor_transformer,
+                actor_transformer_n_heads=actor_transformer_n_heads,
+                actor_transformer_n_layers=actor_transformer_n_layers,
+                actor_transformer_weight_norm=transformer_weight_norm,
                 marginalize_logprobs=marginalize_logprobs,
             )
 

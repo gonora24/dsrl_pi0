@@ -4,6 +4,7 @@ import distrax
 import flax.linen as nn
 import jax.numpy as jnp
 
+from jaxrl2.networks.mlp import ActorChunkTransformer
 from jaxrl2.networks.mlp import MLP
 from jaxrl2.networks.constants import default_init
 
@@ -143,11 +144,11 @@ class TanhMultivariateNormalDiag(distrax.Transformed):
                 high=self.high,
             )
 
-            action = dist.sample(seed=key)
+            action, log_prob = dist.sample_and_log_prob(seed=key)
             actions = actions.at[:, i * single_action : (i + 1) * single_action].set(
                 action
             )
-            logprobs = logprobs.at[:, i].set(dist.log_prob(action))
+            logprobs = logprobs.at[:, i].set(log_prob)
         return actions, logprobs
 
 class LearnedStdTanhNormalPolicy(nn.Module):
@@ -160,16 +161,29 @@ class LearnedStdTanhNormalPolicy(nn.Module):
     high: Optional[float] = None
     action_horizon: int = 1
     dsrl_action_dim: int = 32
+    use_transformer: bool = False
+    actor_transformer_n_heads: int = 4
+    actor_transformer_n_layers: int = 3
+    actor_transformer_weight_norm: bool = False
     marginalize_logprobs: bool = False
 
     @nn.compact
     def __call__(self,
                  observations: jnp.ndarray,
                  training: bool = False) -> distrax.Distribution:
-        outputs = MLP(self.hidden_dims,
-                      activate_final=True,
-                      dropout_rate=self.dropout_rate)(observations,
-                                                      training=training)
+        if self.use_transformer:
+            outputs = ActorChunkTransformer(
+                n_embed=self.hidden_dims[-1],
+                n_heads=self.actor_transformer_n_heads,
+                n_layer=self.actor_transformer_n_layers,
+                dropout_rate=self.dropout_rate,
+                weight_norm=self.actor_transformer_weight_norm,
+            )(observations, training=training)
+        else:
+            outputs = MLP(self.hidden_dims,
+                          activate_final=True,
+                          dropout_rate=self.dropout_rate)(observations,
+                                                        training=training)
 
         means = nn.Dense(self.action_dim, kernel_init=default_init(1e-2))(outputs)
 
