@@ -149,6 +149,8 @@ class TanhMultivariateNormalDiag(distrax.Transformed):
                 action
             )
             logprobs = logprobs.at[:, i].set(log_prob)
+        if self.action_horizon > 1:
+            actions = actions.reshape(batch, self.action_horizon, self.dsrl_action_dim)
         return actions, logprobs
 
 class LearnedStdTanhNormalPolicy(nn.Module):

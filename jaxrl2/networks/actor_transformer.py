@@ -9,7 +9,6 @@ import jax
 import jax.numpy as jnp
 
 from jaxrl2.networks.learned_std_normal_policy import TanhMultivariateNormalDiag
-from jaxrl2.networks.values.critic_transformer import CausalSelfAttention
 
 class CachedSelfAttention(nn.Module):
     """Multi-head causal self-attention with fused QKV projection."""
