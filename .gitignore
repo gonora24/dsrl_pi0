@@ -133,3 +133,4 @@ wandb/
 settings.json
 .vscode/
 jax
+plots/plots/
