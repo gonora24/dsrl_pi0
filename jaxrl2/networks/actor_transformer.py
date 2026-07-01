@@ -182,6 +182,7 @@ class AutoregressiveActorTransformer(nn.Module):
         # action_proj bleibt nn.Dense, wird aber als Modul-Methode
         # korrekt über einen dedizierten Wrapper aufgerufen (siehe unten).
         self.action_proj = nn.Dense(self.d_model)
+        self.pos_embed = nn.Embed(self.chunk_size + 1, self.d_model)
         self.blocks = [
             EncoderBlock(
                 d_model=self.d_model,
@@ -229,6 +230,10 @@ class AutoregressiveActorTransformer(nn.Module):
         mu, log_std = jnp.split(out, 2, axis=-1)
         log_std = jnp.clip(log_std, self.log_std_min, self.log_std_max)
         return mu, log_std, jnp.exp(log_std)
+    
+    def _pos_embed(self, idx: jnp.ndarray) -> jnp.ndarray:
+        """Look up positional embedding(s). idx: integer or [K] array."""
+        return self.pos_embed(idx)
 
     def __call__(self, observations, training: bool = False):
         image_features = observations['pixels']
@@ -242,15 +247,24 @@ class AutoregressiveActorTransformer(nn.Module):
             dtype=context.dtype
         )
         _ = self._embed_action(dummy_action)
+
+        # seq_embed = jnp.concatenate([context, dummy_action], axis=1)
+
+        # Positional embeddings
+        pos_indices = jnp.arange(context.shape[1])
+        pos_embed = self.pos_embed(pos_indices)
+
+        # Add positional embeddings
+        x = context + pos_embed
         
         kv_cache = self._empty_kv_cache(context.shape[0], context.dtype)
         h, _, _ = self._forward_tokens(
-            context, training=training, kv_cache=kv_cache, cache_len=jnp.int32(0)
+            x, training=training, kv_cache=kv_cache, cache_len=jnp.int32(0)
         )
         loc, log_std, scale = self._head(h[:, -1])
 
         variables = self.variables
-        dist = AutoregressiveDistribution(loc, scale, context, variables, self, training=training)
+        dist = AutoregressiveDistribution(loc, scale, x, variables, self, training=training)
         return dist, loc, log_std
 
     def ar_sample(
@@ -305,7 +319,9 @@ class AutoregressiveActorTransformer(nn.Module):
             # Korrekte Methode für action embedding
             new_token = self.apply(
                 variables, action, method=self._embed_action
-            )                                                    # [B, d_model]
+            )       
+            pos_embed = self.apply(variables, jnp.array([t + 1]), method=self._pos_embed)
+            new_token = new_token + pos_embed[0]
 
             # start_indices als jnp.array für JAX-Tracer-Kompatibilität
             buf_new = jax.lax.dynamic_update_slice(
