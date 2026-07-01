@@ -46,9 +46,9 @@ python3 examples/launch_train_sim.py \
 --eval_interval 10000 \
 --checkpoint_interval -1 \
 --log_interval 500 \
---eval_episodes 10 \
+--eval_episodes 1 \
 --multi_grad_step 20 \
---start_online_updates 500 \
+--start_online_updates 5 \
 --resize_image 64 \
 --action_magnitude 1.0 \
 --query_freq 10 \

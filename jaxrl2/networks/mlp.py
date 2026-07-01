@@ -1,6 +1,7 @@
-from typing import Callable, Optional, Sequence, Union
+from typing import Callable, Optional, Sequence, Union, Tuple
 from flax.core import frozen_dict
 
+import jax
 import numpy as np
 import flax.linen as nn
 import jax.numpy as jnp
@@ -233,30 +234,42 @@ class ActorChunkTransformer(nn.Module):
     n_layer: int
     dropout_rate: float
     weight_norm: bool
+    action_horizon: int
+    action_dim: int
+    log_std_min: float
+    log_std_max: float
 
     @nn.compact
     def __call__(
         self,
         obs: jnp.ndarray,
         training: bool,
-    ) -> jnp.ndarray:
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """
         Args:
             obs: [batch, obs_dim] - observation
             training: whether in training mode
 
         Returns:
-            [batch, n_embed] - embeddings for obs token
+            means: [batch, action_horizon, action_dim] - means for each action
+            log_stds: [batch, action_horizon, action_dim] - log stds for each action
         """
         obs = _flatten_dict(obs)
-        # Observation embedding
+        obs = jnp.repeat(obs[:, jnp.newaxis, :], self.action_horizon, axis=1)
+
+        # Observation embedding since obs is repeated for each action horizon
         if self.weight_norm:
             obs_embed = nn.WeightNorm(
                 nn.Dense(self.n_embed, use_bias=False, name="ObsEmbedding")
             )(obs)
         else:
             obs_embed = nn.Dense(self.n_embed, use_bias=False, name="ObsEmbedding")(obs)
-        obs_embed = jnp.expand_dims(obs_embed, 1)  # [batch, 1, n_embed]
+
+        # Positional encoding
+        pos_embed = nn.Embed(num_embeddings=self.action_horizon, features=self.n_embed)(jnp.arange(self.action_horizon))
+        obs_embed = obs_embed + pos_embed
+        
+        # obs_embed = jnp.expand_dims(obs_embed, 1)  # [batch, 1 n_embed]
 
         # Transformer blocks
         for _ in range(self.n_layer):
@@ -269,7 +282,17 @@ class ActorChunkTransformer(nn.Module):
 
         # Layer norm
         norm = nn.LayerNorm()
-        x = norm(x) # [batch, 1, n_embed]
+        x = norm(x) # [batch, action_horizon, n_embed]
 
-        # Return all tokens (caller extracts what they need)
-        return x.squeeze(1)  # [batch, n_embed]
+        # x: (B, action_horizon, n_embed) — project each timestep independently
+        means = nn.Dense(self.action_dim, kernel_init=default_init(1e-2))(x)
+        log_stds = nn.Dense(self.action_dim, kernel_init=default_init(1e-2))(x)
+        log_stds = jnp.clip(log_stds, self.log_std_min, self.log_std_max)
+        # means/log_stds: (B, action_horizon, action_dim)
+
+        # Flatten to (B, action_horizon * action_dim) to match the flat MLP interface
+        batch = x.shape[0]
+        means = jnp.reshape(means, (batch, self.action_horizon * self.action_dim))
+        log_stds = jnp.reshape(log_stds, (batch, self.action_horizon * self.action_dim))
+
+        return means, log_stds

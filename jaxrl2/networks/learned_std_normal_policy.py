@@ -174,12 +174,16 @@ class LearnedStdTanhNormalPolicy(nn.Module):
                  observations: jnp.ndarray,
                  training: bool = False) -> distrax.Distribution:
         if self.use_transformer:
-            outputs = ActorChunkTransformer(
+            means, log_stds = ActorChunkTransformer(
                 n_embed=self.hidden_dims[-1],
                 n_heads=self.actor_transformer_n_heads,
                 n_layer=self.actor_transformer_n_layers,
                 dropout_rate=self.dropout_rate,
                 weight_norm=self.actor_transformer_weight_norm,
+                action_horizon=self.action_horizon,
+                action_dim=self.dsrl_action_dim,
+                log_std_min=self.log_std_min,
+                log_std_max=self.log_std_max,
             )(observations, training=training)
         else:
             outputs = MLP(self.hidden_dims,
@@ -187,10 +191,10 @@ class LearnedStdTanhNormalPolicy(nn.Module):
                           dropout_rate=self.dropout_rate)(observations,
                                                         training=training)
 
-        means = nn.Dense(self.action_dim, kernel_init=default_init(1e-2))(outputs)
+            means = nn.Dense(self.action_dim, kernel_init=default_init(1e-2))(outputs)
 
-        log_stds = nn.Dense(self.action_dim, kernel_init=default_init(1e-2))(outputs)
-        log_stds = jnp.clip(log_stds, self.log_std_min, self.log_std_max)
+            log_stds = nn.Dense(self.action_dim, kernel_init=default_init(1e-2))(outputs)
+            log_stds = jnp.clip(log_stds, self.log_std_min, self.log_std_max)
 
         distribution = TanhMultivariateNormalDiag(
             loc=means,
