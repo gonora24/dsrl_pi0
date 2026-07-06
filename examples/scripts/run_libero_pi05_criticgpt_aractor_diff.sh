@@ -2,7 +2,7 @@
 #SBATCH --ntasks=1
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1 
-#SBATCH --job-name=dsrl_pi05_libero_90_task28_baseline
+#SBATCH --job-name=dsrl_pi05_libero_90_task59_diff_criticgpt_aractor
 
 module load devel/miniforge
 conda deactivate
@@ -13,7 +13,7 @@ export WANDB_USERNAME='noragorhan'
 export WANDB_TEAM='noragorhan-karlsruhe-institute-of-technology'
 proj_name=DSRL_pi0_Libero
 device_id=0
-wandb_mode=online  # online or offline
+wandb_mode=offline  # online or offline
 export WANDB_MODE=${wandb_mode}
 
 export OUTPUT_DIR=/pfs/work9/workspace/scratch/ka_eu3660-rlinf_tmp/DSRL_pi0_Libero
@@ -38,27 +38,41 @@ pip install "transformers==4.53.2"
 python3 examples/launch_train_sim.py \
 --algorithm pixel_sac \
 --env libero \
---prefix dsrl_pi05_libero_90_task28 \
---suffix baseline \
+--prefix dsrl_pi05_libero_90_task59 \
+--suffix criticgpt_aractor_10replan \
 --wandb_project ${proj_name} \
 --batch_size 256 \
 --discount 0.999 \
 --seed 0 \
---max_steps 500000  \
+--max_steps 1000000 \
 --eval_interval 10000 \
---checkpoint_interval 100000 \
+--checkpoint_interval -1 \
 --log_interval 500 \
 --eval_episodes 10 \
 --multi_grad_step 20 \
 --start_online_updates 500 \
 --resize_image 64 \
 --action_magnitude 1.0 \
---query_freq 5 \
+--query_freq 10 \
 --hidden_dims 128 \
 --libero_suite "libero_90" \
---libero_task_id 28 \
+--libero_task_id 59 \
 --pi0_checkpoint pi05_libero \
---chunk_reward 0 \
---use_chunky_actor_critic 0 \
+--critic_hidden_dims 512 256 128 \
+--chunk_reward 1 \
+--use_chunky_actor_critic 1 \
+--use_transformer_critic 1 \
+--transformer_n_embd 256 \
+--transformer_n_head 4 \
+--transformer_n_layer 3 \
+--transformer_weight_norm 1 \
+--transformer_use_bias 0 \
+--use_transformer_actor 1 \
+--actor_transformer_d_model 128 \
+--actor_transformer_n_layers 3 \
+--actor_transformer_n_heads 4 \
+--actor_transformer_dropout 0.0 \
+--use_aractor_diff 1 \
+--marginalize_logprobs 0 \
 
-## batch size 256, multi grad step 20, hidden dims 50
+## batch size 256, multi grad step 20, hidden dims 50, entropy scaling is auto

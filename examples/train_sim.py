@@ -172,10 +172,10 @@ def main(variant):
     else:
         expname = create_exp_name(variant.prefix, seed=variant.seed)
    
-    outputdir = os.path.abspath(os.path.join(os.environ['EXP'], expname))
-    variant.outputdir = outputdir
+    outputdir = os.environ['OUTPUT_DIR']
+    variant.outputdir = os.path.join(outputdir, expname)
     if not os.path.exists(outputdir):
-        os.makedirs(outputdir)
+        os.makedirs(outputdir, exist_ok=True)
     print('writing to output dir ', outputdir)
     
     if variant.env == 'libero':
@@ -291,6 +291,9 @@ def main(variant):
         use_chunk_actor_transformer=variant.use_chunk_actor_transformer,
         **train_kwargs,
     )
+
+    if getattr(variant, 'restore_path', None) is not None:
+        agent.restore_checkpoint(variant.restore_path)
 
     config_extra = {
         "pi0_checkpoint_dir": str(checkpoint_dir),

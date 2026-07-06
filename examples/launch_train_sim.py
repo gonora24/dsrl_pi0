@@ -14,6 +14,7 @@ if __name__ == '__main__':
     parser.add_argument('--log_interval', default=1000, help='Logging interval.', type=int)
     parser.add_argument('--eval_interval', default=5000, help='Eval interval.', type=int)
     parser.add_argument('--checkpoint_interval', default=-1, help='checkpoint interval.', type=int)
+    parser.add_argument('--restore_path', default=None, help='Path to checkpoint to restore from.', type=str)
     parser.add_argument('--batch_size', default=16, help='Mini batch size.', type=int)
     parser.add_argument('--max_steps', default=int(1e6), help='Number of training steps.', type=int)
     parser.add_argument('--add_states', default=1, help='whether to add low-dim states to the obervations', type=int)
@@ -45,6 +46,7 @@ if __name__ == '__main__':
     parser.add_argument('--metaworld_task_name', default='basketball-v3', help='which metaworld task', type=str)
     parser.add_argument('--use_chunk_actor_transformer', default=0, help='use chunk actor transformer', type=int)
     parser.add_argument('--marginalize_logprobs', default=0, help='marginalize logprobs', type=int)
+    parser.add_argument('--use_aractor_diff', default=0, help='use aractor diff', type=int)
     parser.add_argument('--critic_hidden_dims', default=[128, 128, 128], help='critic hidden dimensions', nargs="+", type=int)
     parser.add_argument(
         '--pi0_checkpoint',
