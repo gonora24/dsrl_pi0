@@ -126,6 +126,12 @@ def parse_label_mapping(raw: str | None) -> dict[str, str]:
     return mapping
 
 
+def metric_ylabel(metric: str) -> str:
+    """Derive a y-axis label from a W&B metric key (e.g. evaluation/success_rate -> Success Rate)."""
+    name = metric.rsplit("/", 1)[-1]
+    return name.replace("_", " ").title()
+
+
 def short_label(identifier: str) -> str:
     """Use the suffix after the timestamp when the run id follows project naming."""
     match = re.search(r"_\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}_\d{4}--s-\d+(?:_(.+))?$", identifier)
@@ -219,19 +225,30 @@ def collect_histories(
     return pd.concat(frames, ignore_index=True)
 
 
+def clip_to_shortest_run(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep only steps up to where the shortest run ends."""
+    max_step = df.groupby("label", sort=False)["step"].max().min()
+    return df.loc[df["step"] <= max_step].copy()
+
+
 def plot_success_rates(
     df: pd.DataFrame,
     *,
+    metric: str,
     title: str | None,
     output: Path | None,
     show: bool,
     ylim: tuple[float, float] | None,
     ema_halflife: float,
+    clip_to_shortest: bool,
 ) -> None:
+    if clip_to_shortest:
+        df = clip_to_shortest_run(df)
     df = apply_smoothing(df, ema_halflife)
 
     sns.set_theme(style="whitegrid", context="notebook")
     n_runs = df["label"].nunique()
+    hue_order = df["label"].drop_duplicates().tolist()
     fig, ax = plt.subplots(figsize=(10, 6))
 
     sns.lineplot(
@@ -239,6 +256,7 @@ def plot_success_rates(
         x="step",
         y="success_rate",
         hue="label",
+        hue_order=hue_order,
         linewidth=1.8,
         ax=ax,
     )
@@ -249,8 +267,8 @@ def plot_success_rates(
     ax.xaxis.set_major_formatter(FuncFormatter(format_training_steps))
 
     ax.set_xlabel("Training Steps")
-    ax.set_ylabel("Success Rate")
-    ax.set_title(title or "Evaluation success rate", fontsize=14)
+    ax.set_ylabel(metric_ylabel(metric))
+    ax.set_title(title or "Evaluation success rate", fontsize=20)
 
     ymin_val = 0.0 if ylim is None else ylim[0]
     ymax_val = 1.0 if ylim is None else ylim[1]
@@ -258,14 +276,16 @@ def plot_success_rates(
     top_pad = 0.02 if ymax_val >= 1.0 else 0.0
     ax.set_ylim(ymin_val - bottom_pad, ymax_val + top_pad)
     ax.set_axisbelow(True)
-    for line in ax.lines:
-        line.set_zorder(3)
+    n_lines = len(ax.lines)
+    for i, line in enumerate(ax.lines):
+        # First series on top so overlapping curves stay visible.
+        line.set_zorder(3 + n_lines - i)
         line.set_clip_on(False)
     ax.legend(
-        fontsize=11,
+        fontsize=13,
         loc="upper center",
         bbox_to_anchor=(0.5, -0.22),
-        ncol=min(n_runs, 3),
+        ncol=min(n_runs, 2),
         frameon=True,
         handlelength=1.5,
         columnspacing=1.0,
@@ -370,6 +390,14 @@ def build_parser() -> argparse.ArgumentParser:
             f"(default: {DEFAULT_EMA_HALFLIFE}). Set to 0 to disable."
         ),
     )
+    parser.add_argument(
+        "--clip-to-shortest-run",
+        action="store_true",
+        help=(
+            "Truncate all runs and the x-axis at the last step of the shortest run "
+            "(useful for fair comparisons when runs differ in length)."
+        ),
+    )
     return parser
 
 
@@ -395,11 +423,13 @@ def main(argv: list[str] | None = None) -> int:
 
     plot_success_rates(
         df,
+        metric=args.metric,
         title=args.title,
         output=args.output,
         show=args.show,
         ylim=(args.ymin, args.ymax),
         ema_halflife=args.ema_halflife,
+        clip_to_shortest=args.clip_to_shortest_run,
     )
     return 0
 

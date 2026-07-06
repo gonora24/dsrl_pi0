@@ -2,14 +2,15 @@
 set -euo pipefail
 
 # --- W&B settings ---
-proj_name="DSRL_pi05_Libero"
-entity="noras-masterarbeit"  # leave empty to use WANDB_TEAM from jaxrl2/utils/wandb_config.py
+proj_name="DSRL_pi0_Libero"
+entity="noragorhan-karlsruhe-institute-of-technology"  # leave empty to use WANDB_TEAM from jaxrl2/utils/wandb_config.py
 
 # --- Runs to compare (W&B run ids / experiment ids, or local offline run dirs) ---
 identifiers=(
-  "dsrl_pi05_libero_90_task43_2026_06_28_05_42_04_0000--s-0_baseline_10numqs_10replan"
-  "dsrl_pi05_libero_90_task43_2026_06_29_01_06_06_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
-  "dsrl_pi05_libero_90_task43_2026_06_29_08_55_16_0000--s-0_chunkrewardcriticactor_criticgpt_2numqs_10replan"
+  "dsrl_pi05_libero_90_task28_2026_06_21_04_44_15_0000--s-0_baseline_10numqs_5replan"
+  "dsrl_pi05_libero_90_task28_2026_06_27_13_25_52_0000--s-0_chunkrewardcriticactor_mlp_10replan_criticdim512_256_128_clip_marginlp"
+  "dsrl_pi05_libero_90_task28_2026_07_01_11_02_41_0000--s-0_chunkrewardcriticactor_criticgpt_2numqs_criticdim512"
+  "dsrl_pi05_libero_90_task28_2026_06_23_05_18_35_0000--s-0_criticgpt_aractor_10replan"
 )
 
 # --- Optional legend labels (comma-separated run_id=Label pairs; leave empty for auto labels) ---
@@ -17,17 +18,18 @@ labels=(
   "${identifiers[0]}=Baseline"
   "${identifiers[1]}=Chunked MLP Critic + Actor"
   "${identifiers[2]}=Chunked Critic Transformer + Actor MLP"
+  "${identifiers[3]}=Chunked Critic Transformer + Autoregressive Actor Transformer"
 )
 
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-title="LIBERO-90 Task 43"
-output="plots/pi05_libero90_task43_success.png"
+title="LIBERO-90 Task 28"
+output="plots/pi05_libero90_task28_success.png"
 show_plot=0   # set to 1 to display interactively
 ymin=0.0
 ymax=1.0
-ema_halflife=50000  # training steps; set to 0 to disable smoothing
+ema_halflife=25000  # training steps; set to 0 to disable smoothing
 clip_to_shortest_run=0  # set to 0 to plot until the longest run ends
 
 # --- Environment (adjust if needed) ---

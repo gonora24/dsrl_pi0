@@ -2,14 +2,15 @@
 set -euo pipefail
 
 # --- W&B settings ---
-proj_name="DSRL_pi05_Libero"
-entity="noras-masterarbeit"  # leave empty to use WANDB_TEAM from jaxrl2/utils/wandb_config.py
+proj_name="DSRL_pi0_Libero"
+entity="noragorhan-karlsruhe-institute-of-technology"  # leave empty to use WANDB_TEAM from jaxrl2/utils/wandb_config.py
 
 # --- Runs to compare (W&B run ids / experiment ids, or local offline run dirs) ---
 identifiers=(
-  "dsrl_pi05_libero_90_task43_2026_06_28_05_42_04_0000--s-0_baseline_10numqs_10replan"
-  "dsrl_pi05_libero_90_task43_2026_06_29_01_06_06_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
-  "dsrl_pi05_libero_90_task43_2026_06_29_08_55_16_0000--s-0_chunkrewardcriticactor_criticgpt_2numqs_10replan"
+  "dsrl_pi05_libero_10_task8_2026_06_21_03_30_41_0000--s-0_baseline_10numqs_5replan"
+  "dsrl_pi05_libero_10_task8_2026_06_21_08_46_12_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
+  "dsrl_pi05_libero_10_task8_2026_06_16_08_19_10_0000--s-0_chunkrewardcriticactor_criticgpt_1numqs_10replan"
+  "dsrl_pi0_libero_10_task8_2026_06_19_00_03_47_0000--s-0_chunkrewardcriticactor_aractor"
 )
 
 # --- Optional legend labels (comma-separated run_id=Label pairs; leave empty for auto labels) ---
@@ -17,13 +18,14 @@ labels=(
   "${identifiers[0]}=Baseline"
   "${identifiers[1]}=Chunked MLP Critic + Actor"
   "${identifiers[2]}=Chunked Critic Transformer + Actor MLP"
+  "${identifiers[3]}=Chunked Critic Transformer + Autoregressive Actor Transformer"
 )
 
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-title="LIBERO-90 Task 43"
-output="plots/pi05_libero90_task43_success.png"
+title="LIBERO-10 Task 8"
+output="plots/pi05_libero10_task8_success.png"
 show_plot=0   # set to 1 to display interactively
 ymin=0.0
 ymax=1.0

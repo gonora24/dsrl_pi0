@@ -7,9 +7,9 @@ entity="noras-masterarbeit"  # leave empty to use WANDB_TEAM from jaxrl2/utils/w
 
 # --- Runs to compare (W&B run ids / experiment ids, or local offline run dirs) ---
 identifiers=(
-  "dsrl_pi05_libero_90_task43_2026_06_28_05_42_04_0000--s-0_baseline_10numqs_10replan"
-  "dsrl_pi05_libero_90_task43_2026_06_29_01_06_06_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
-  "dsrl_pi05_libero_90_task43_2026_06_29_08_55_16_0000--s-0_chunkrewardcriticactor_criticgpt_2numqs_10replan"
+  "dsrl_pi05_libero_90_task2_2026_06_28_11_00_03_0000--s-0_baseline_10numqs_10replan"
+  "dsrl_pi05_libero_90_task2_2026_06_29_01_43_21_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
+  "dsrl_pi05_libero_90_task2_2026_06_29_05_54_13_0000--s-0_chunkrewardcriticactor_criticgpt_2numqs_10replan"
 )
 
 # --- Optional legend labels (comma-separated run_id=Label pairs; leave empty for auto labels) ---
@@ -22,13 +22,13 @@ labels=(
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-title="LIBERO-90 Task 43"
-output="plots/pi05_libero90_task43_success.png"
+title="LIBERO-90 Task 2"
+output="plots/pi05_libero90_task2_success.png"
 show_plot=0   # set to 1 to display interactively
 ymin=0.0
 ymax=1.0
 ema_halflife=50000  # training steps; set to 0 to disable smoothing
-clip_to_shortest_run=0  # set to 0 to plot until the longest run ends
+clip_to_shortest_run=1  # set to 0 to plot until the longest run ends
 
 # --- Environment (adjust if needed) ---
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

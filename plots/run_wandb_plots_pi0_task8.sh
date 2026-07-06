@@ -2,14 +2,14 @@
 set -euo pipefail
 
 # --- W&B settings ---
-proj_name="DSRL_pi05_Libero"
-entity="noras-masterarbeit"  # leave empty to use WANDB_TEAM from jaxrl2/utils/wandb_config.py
+proj_name="DSRL_pi0_Libero"
+entity="noragorhan-karlsruhe-institute-of-technology"  # leave empty to use WANDB_TEAM from jaxrl2/utils/wandb_config.py
 
 # --- Runs to compare (W&B run ids / experiment ids, or local offline run dirs) ---
 identifiers=(
-  "dsrl_pi05_libero_90_task43_2026_06_28_05_42_04_0000--s-0_baseline_10numqs_10replan"
-  "dsrl_pi05_libero_90_task43_2026_06_29_01_06_06_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
-  "dsrl_pi05_libero_90_task43_2026_06_29_08_55_16_0000--s-0_chunkrewardcriticactor_criticgpt_2numqs_10replan"
+  "dsrl_pi0_libero_2026_05_17_08_16_21_0000--s-0_libero_10_task_8"
+  "dsrl_pi0_libero_10_task8_2026_06_12_16_25_02_0000--s-0_chunkrewardcriticactor_mlp"
+  "dsrl_pi0_libero_10_task8_2026_06_15_03_04_51_0000--s-0_chunkrewardcriticactor_criticgpt_1numqs"
 )
 
 # --- Optional legend labels (comma-separated run_id=Label pairs; leave empty for auto labels) ---
@@ -22,13 +22,13 @@ labels=(
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-title="LIBERO-90 Task 43"
-output="plots/pi05_libero90_task43_success.png"
+title="LIBERO-10 Task 8"
+output="plots/pi0_libero10_task8_success.png"
 show_plot=0   # set to 1 to display interactively
 ymin=0.0
 ymax=1.0
-ema_halflife=50000  # training steps; set to 0 to disable smoothing
-clip_to_shortest_run=0  # set to 0 to plot until the longest run ends
+ema_halflife=25000  # training steps; set to 0 to disable smoothing
+clip_to_shortest_run=1  # set to 0 to plot until the longest run ends
 
 # --- Environment (adjust if needed) ---
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
