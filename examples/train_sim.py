@@ -172,7 +172,7 @@ def main(variant):
     else:
         expname = create_exp_name(variant.prefix, seed=variant.seed)
    
-    outputdir = os.environ['OUTPUT_DIR']
+    outputdir = os.environ['OUTPUT_DIR'] if 'OUTPUT_DIR' in os.environ else '/pfs/work9/workspace/scratch/ka_eu3660-rlinf_tmp/DSRL_pi0_Libero'
     variant.outputdir = os.path.join(outputdir, expname)
     if not os.path.exists(outputdir):
         os.makedirs(outputdir, exist_ok=True)
@@ -236,6 +236,9 @@ def main(variant):
     openpi_train_config = openpi_config.get_config(openpi_config_name)
     variant.pi0_action_horizon = openpi_train_config.model.action_horizon
     variant.use_chunky_actor_critic = bool(getattr(variant, 'use_chunky_actor_critic', 0))
+    variant.use_actor_diff = bool(getattr(variant, 'use_actor_diff', 0))
+    assert not (variant.use_actor_diff and variant.marginalize_logprobs), \
+        "use_actor_diff and marginalize_logprobs are mutually exclusive"
     if variant.use_chunky_actor_critic:
         if variant.query_freq <= 0:
             raise ValueError("use_chunky_actor_critic requires --query_freq > 0")
@@ -266,6 +269,8 @@ def main(variant):
         train_kwargs['decay_steps'] = variant.max_steps
     if variant.use_transformer_critic:
         train_kwargs['num_qs'] = 4
+    if variant.use_actor_diff:
+        train_kwargs['target_entropy'] = -16.0
     agent = PixelSACLearner(
         variant.seed,
         sample_obs,
@@ -289,6 +294,7 @@ def main(variant):
         clip_critic_grad_norm=variant.clip_critic_grad_norm,
         marginalize_logprobs=variant.marginalize_logprobs,
         use_chunk_actor_transformer=variant.use_chunk_actor_transformer,
+        use_actor_diff=variant.use_actor_diff,
         **train_kwargs,
     )
 
