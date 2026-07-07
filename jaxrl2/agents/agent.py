@@ -38,9 +38,9 @@ class Agent(object):
         return eval_reward_function_jit(self._actor.apply_fn, self._actor.params, self._actor.batch_stats,
                                  batch)
 
-    def sample_actions(self, observations: np.ndarray, marginalize_logprobs: bool = False) -> np.ndarray:
+    def sample_actions(self, observations: np.ndarray, marginalize_logprobs: bool = False, use_actor_diff: bool = False) -> np.ndarray:
         rng, actions = sample_actions_jit(self._rng, self._actor.apply_fn,
-                                          self._actor.params, observations, get_batch_stats(self._actor), marginalize_logprobs)
+                                          self._actor.params, observations, get_batch_stats(self._actor), marginalize_logprobs, use_actor_diff)
 
         self._rng = rng
         return np.asarray(actions)

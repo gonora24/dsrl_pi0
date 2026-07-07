@@ -39,13 +39,13 @@ from jaxrl2.utils.target_update import soft_target_update
 class TrainState(train_state.TrainState):
     batch_stats: Any
 
-@functools.partial(jax.jit, static_argnames=('critic_reduction', 'color_jitter', 'aug_next', 'num_cameras', 'chunk_reward', 'marginalize_logprobs'))
+@functools.partial(jax.jit, static_argnames=('critic_reduction', 'color_jitter', 'aug_next', 'num_cameras', 'chunk_reward', 'marginalize_logprobs', 'use_actor_diff'))
 def _update_jit(
     rng: PRNGKey, actor: TrainState, critic: TrainState,
     target_critic_params: Params, temp: TrainState, batch: TrainState,
     discount: float, tau: float, target_entropy: float,
     critic_reduction: str, color_jitter: bool, aug_next: bool, num_cameras: int,
-    chunk_reward: bool, marginalize_logprobs: bool,
+    chunk_reward: bool, marginalize_logprobs: bool, use_actor_diff: bool,
 ) -> Tuple[PRNGKey, TrainState, TrainState, Params, TrainState, Dict[str,float]]:
     aug_pixels = batch['observations']['pixels']
     aug_next_pixels = batch['next_observations']['pixels']
@@ -83,11 +83,11 @@ def _update_jit(
     target_critic = critic.replace(params=target_critic_params)
     new_critic, critic_info = update_critic(
         key, actor, critic, target_critic, temp, batch, discount,
-        critic_reduction=critic_reduction, chunk_reward=chunk_reward, marginalize_logprobs=marginalize_logprobs)
+        critic_reduction=critic_reduction, chunk_reward=chunk_reward, marginalize_logprobs=marginalize_logprobs, use_actor_diff=use_actor_diff)
     new_target_critic_params = soft_target_update(new_critic.params, target_critic_params, tau)
     
     key, rng = jax.random.split(rng)
-    new_actor, actor_info = update_actor(key, actor, new_critic, temp, batch, critic_reduction=critic_reduction, marginalize_logprobs=marginalize_logprobs)
+    new_actor, actor_info = update_actor(key, actor, new_critic, temp, batch, critic_reduction=critic_reduction, marginalize_logprobs=marginalize_logprobs, use_actor_diff=use_actor_diff)
     new_temp, alpha_info = update_temperature(temp, actor_info['entropy'], target_entropy)
 
     return rng, new_actor, new_critic, new_target_critic_params, new_temp, {
@@ -148,6 +148,7 @@ class PixelSACLearner(Agent):
                  clip_actor_grad_norm: float = 0.0,
                  clip_critic_grad_norm: float = 0.0,
                  marginalize_logprobs: bool = False,
+                 use_actor_diff: bool = False,
                  ):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1812.05905
@@ -174,6 +175,7 @@ class PixelSACLearner(Agent):
         self.critic_reduction = critic_reduction
         self.chunk_reward = chunk_reward
         self.marginalize_logprobs = marginalize_logprobs
+        self.use_actor_diff = use_actor_diff
         
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key, temp_key = jax.random.split(rng, 4)
@@ -333,12 +335,50 @@ class PixelSACLearner(Agent):
         print(f'use_chunky_actor_critic: {self.use_chunky_actor_critic}')
         print(f'action_chunk_shape: {self.action_chunk_shape}')
         print(self.critic_reduction)
+
+        # Config saved alongside checkpoints so they can be restored without
+        # re-specifying hyperparameters (see restore_from_checkpoint_dir).
+        self._ckpt_config = {
+            'obs_shapes': {k: list(v.shape) for k, v in observations.items()},
+            'obs_dtypes': {k: str(v.dtype) for k, v in observations.items()},
+            'action_shape': list(actions.shape),
+            'action_dtype': str(actions.dtype),
+            'hidden_dims': list(hidden_dims),
+            'latent_dim': latent_dim,
+            'encoder_type': encoder_type,
+            'encoder_norm': encoder_norm,
+            'use_spatial_softmax': use_spatial_softmax,
+            'softmax_temperature': softmax_temperature,
+            'use_bottleneck': use_bottleneck,
+            'dropout_rate': dropout_rate,
+            'action_magnitude': action_magnitude,
+            'num_cameras': num_cameras,
+            'use_chunky_actor_critic': use_chunky_actor_critic,
+            'pi0_action_horizon': pi0_action_horizon,
+            'dsrl_action_dim': dsrl_action_dim,
+            'use_transformer_actor': use_transformer_actor,
+            'actor_transformer_d_model': actor_transformer_d_model,
+            'actor_transformer_n_layers': actor_transformer_n_layers,
+            'actor_transformer_n_heads': actor_transformer_n_heads,
+            'actor_transformer_dropout': actor_transformer_dropout,
+            'use_chunk_actor_transformer': use_chunk_actor_transformer,
+            'marginalize_logprobs': marginalize_logprobs,
+            'use_actor_diff': use_actor_diff,
+            'num_qs': num_qs,
+            'critic_hidden_dims': list(critic_hidden_dims),
+            'use_transformer_critic': use_transformer_critic,
+            'transformer_n_embd': transformer_n_embd,
+            'transformer_n_head': transformer_n_head,
+            'transformer_n_layer': transformer_n_layer,
+            'transformer_use_bias': transformer_use_bias,
+            'transformer_weight_norm': transformer_weight_norm,
+        }
         
 
     def update(self, batch: FrozenDict) -> Dict[str, float]:
         new_rng, new_actor, new_critic, new_target_critic, new_temp, info = _update_jit(
             self._rng, self._actor, self._critic, self._target_critic_params, self._temp, batch, self.discount, self.tau, self.target_entropy, 
-            self.critic_reduction, self.color_jitter, self.aug_next, self.num_cameras, self.chunk_reward, self.marginalize_logprobs
+            self.critic_reduction, self.color_jitter, self.aug_next, self.num_cameras, self.chunk_reward, self.marginalize_logprobs, self.use_actor_diff
             )
 
         self._rng = new_rng
@@ -398,6 +438,15 @@ class PixelSACLearner(Agent):
         }
         return save_dict
 
+    def save_checkpoint(self, dir, step, keep_every_n_steps):
+        """Save Flax checkpoint and a companion JSON with hyperparameters."""
+        import json
+        super().save_checkpoint(dir, step, keep_every_n_steps)
+        config_path = pathlib.Path(dir) / f"checkpoint{step}_config.json"
+        with open(config_path, 'w') as f:
+            json.dump(self._ckpt_config, f, indent=2)
+        print(f'saved config to {config_path}')
+
     def restore_checkpoint(self, dir):
         assert pathlib.Path(dir).exists(), f"Checkpoint {dir} does not exist."
         output_dict = checkpoints.restore_checkpoint(dir, self._save_dict)
@@ -406,6 +455,84 @@ class PixelSACLearner(Agent):
         self._target_critic_params = output_dict['target_critic_params']
         self._temp = output_dict['temp']
         print('restored from ', dir)
+
+    @classmethod
+    def restore_from_checkpoint_dir(cls, ckpt_dir: str, seed: int = 0) -> 'PixelSACLearner':
+        """Reconstruct a PixelSACLearner from a checkpoint directory.
+
+        Reads the companion ``checkpoint{step}_config.json`` written by
+        ``save_checkpoint`` to recover the exact architecture, then restores
+        the weights via ``restore_checkpoint``.
+
+        Args:
+            ckpt_dir : path to the checkpoint subdirectory,
+                       e.g. ``.../run_name/checkpoint941``
+            seed     : RNG seed for the dummy initialisation (weights are
+                       overwritten by the restore, so value does not matter)
+
+        Returns:
+            Fully restored ``PixelSACLearner`` instance.
+        """
+        import json
+        import numpy as np
+
+        ckpt_path = pathlib.Path(ckpt_dir)
+        config_path = ckpt_path.parent / f"{ckpt_path.name}_config.json"
+
+        assert ckpt_path.exists(), f"Checkpoint not found: {ckpt_dir}"
+        assert config_path.exists(), (
+            f"Config file not found: {config_path}\n"
+            "Checkpoints saved before this feature was added do not have a "
+            "companion config. Pass hyperparameters explicitly instead."
+        )
+
+        with open(config_path) as f:
+            cfg = json.load(f)
+
+        # Reconstruct dummy numpy arrays with the saved shapes / dtypes.
+        def _make(shape, dtype_str):
+            return np.zeros(shape, dtype=np.dtype(dtype_str))
+
+        sample_obs = {k: _make(cfg['obs_shapes'][k], cfg['obs_dtypes'][k])
+                      for k in cfg['obs_shapes']}
+        sample_action = _make(cfg['action_shape'], cfg['action_dtype'])
+
+        agent = cls(
+            seed=seed,
+            observations=sample_obs,
+            actions=sample_action,
+            hidden_dims=tuple(cfg['hidden_dims']),
+            latent_dim=cfg['latent_dim'],
+            encoder_type=cfg['encoder_type'],
+            encoder_norm=cfg['encoder_norm'],
+            use_spatial_softmax=cfg['use_spatial_softmax'],
+            softmax_temperature=cfg['softmax_temperature'],
+            use_bottleneck=cfg['use_bottleneck'],
+            dropout_rate=cfg.get('dropout_rate'),
+            action_magnitude=cfg['action_magnitude'],
+            num_cameras=cfg['num_cameras'],
+            use_chunky_actor_critic=cfg['use_chunky_actor_critic'],
+            pi0_action_horizon=cfg['pi0_action_horizon'],
+            dsrl_action_dim=cfg['dsrl_action_dim'],
+            use_transformer_actor=cfg['use_transformer_actor'],
+            actor_transformer_d_model=cfg['actor_transformer_d_model'],
+            actor_transformer_n_layers=cfg['actor_transformer_n_layers'],
+            actor_transformer_n_heads=cfg['actor_transformer_n_heads'],
+            actor_transformer_dropout=cfg['actor_transformer_dropout'],
+            use_chunk_actor_transformer=cfg['use_chunk_actor_transformer'],
+            marginalize_logprobs=cfg['marginalize_logprobs'],
+            use_actor_diff=cfg['use_actor_diff'],
+            num_qs=cfg['num_qs'],
+            critic_hidden_dims=tuple(cfg['critic_hidden_dims']),
+            use_transformer_critic=cfg['use_transformer_critic'],
+            transformer_n_embd=cfg['transformer_n_embd'],
+            transformer_n_head=cfg['transformer_n_head'],
+            transformer_n_layer=cfg['transformer_n_layer'],
+            transformer_use_bias=cfg['transformer_use_bias'],
+            transformer_weight_norm=cfg['transformer_weight_norm'],
+        )
+        agent.restore_checkpoint(ckpt_dir)
+        return agent
         
     
 @functools.partial(jax.jit)

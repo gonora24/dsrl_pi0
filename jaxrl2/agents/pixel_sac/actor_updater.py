@@ -11,7 +11,7 @@ from jaxrl2.types import Params, PRNGKey
 
 
 def update_actor(key: PRNGKey, actor: TrainState, critic: TrainState,
-                 temp: TrainState, batch: DatasetDict, cross_norm:bool=False, critic_reduction:str='min', marginalize_logprobs:bool=False) -> Tuple[TrainState, Dict[str, float]]:
+                 temp: TrainState, batch: DatasetDict, cross_norm:bool=False, critic_reduction:str='min', marginalize_logprobs:bool=False, use_actor_diff:bool=False) -> Tuple[TrainState, Dict[str, float]]:
     
     key, key_act, key_dropout = jax.random.split(key, num=3)
 
@@ -38,6 +38,8 @@ def update_actor(key: PRNGKey, actor: TrainState, critic: TrainState,
         
         if marginalize_logprobs:
             actions, log_probs = dist.compute_marginalized_logprobs(means, log_stds, key=key_act)
+        elif use_actor_diff:
+            actions, log_probs = dist.sample_and_log_prob_diff(seed=key_act)
         else:
             actions, log_probs = dist.sample_and_log_prob(seed=key_act)
 
@@ -77,6 +79,13 @@ def update_actor(key: PRNGKey, actor: TrainState, critic: TrainState,
             'std_pi_max': std_diag_dist.max(),
             'std_pi_min': std_diag_dist.min(),
         }
+        if use_actor_diff:
+            residual = [actions[:, i] - actions[:, i-1] for i in range(1, dist.action_horizon)]
+            residual = jnp.stack(residual, axis=1)
+            things_to_log['residual_mean'] = residual.mean()
+            things_to_log['residual_std'] = residual.std(axis=1).mean()
+            things_to_log['residual_min'] = residual.min(axis=1).mean()
+            things_to_log['residual_max'] = residual.max(axis=1).mean()
         return actor_loss, (things_to_log, new_model_state)
 
     grads, (info, new_model_state) = jax.grad(actor_loss_fn, has_aux=True)(actor.params)

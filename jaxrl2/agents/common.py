@@ -84,13 +84,14 @@ def eval_actions_jit(actor_apply_fn: Callable[..., distrax.Distribution],
     return dist.mode()
 
 
-@partial(jax.jit, static_argnames=('actor_apply_fn', 'marginalize_logprobs'))
+@partial(jax.jit, static_argnames=('actor_apply_fn', 'marginalize_logprobs', 'use_actor_diff'))
 def sample_actions_jit(
         rng: PRNGKey, actor_apply_fn: Callable[..., distrax.Distribution],
         actor_params: Params,
         observations: np.ndarray,
         actor_batch_stats: Any,
-        marginalize_logprobs: bool = False) -> Tuple[PRNGKey, jnp.ndarray]:
+        marginalize_logprobs: bool = False,
+        use_actor_diff: bool = False) -> Tuple[PRNGKey, jnp.ndarray]:
     input_collections = {'params': actor_params}
     if actor_batch_stats is not None:
         input_collections['batch_stats'] = actor_batch_stats
@@ -98,6 +99,9 @@ def sample_actions_jit(
     rng, key = jax.random.split(rng)
     if marginalize_logprobs:
         actions, _ = dist.compute_marginalized_logprobs(means, log_stds, key=key)
+        return rng, actions
+    elif use_actor_diff:
+        actions, _ = dist.sample_and_log_prob_diff(seed=key)
         return rng, actions
     else:
         actions = dist.sample(seed=key)

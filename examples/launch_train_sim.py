@@ -46,7 +46,7 @@ if __name__ == '__main__':
     parser.add_argument('--metaworld_task_name', default='basketball-v3', help='which metaworld task', type=str)
     parser.add_argument('--use_chunk_actor_transformer', default=0, help='use chunk actor transformer', type=int)
     parser.add_argument('--marginalize_logprobs', default=0, help='marginalize logprobs', type=int)
-    parser.add_argument('--use_aractor_diff', default=0, help='use aractor diff', type=int)
+    parser.add_argument('--use_actor_diff', default=0, help='use autoregressive difference predictor', type=int)
     parser.add_argument('--critic_hidden_dims', default=[128, 128, 128], help='critic hidden dimensions', nargs="+", type=int)
     parser.add_argument(
         '--pi0_checkpoint',
