@@ -4,9 +4,12 @@
 #SBATCH --gres=gpu:1 
 #SBATCH --job-name=dsrl_pi05_libero_90_task59_chunk
 
-module load devel/miniforge
-conda deactivate
-conda activate dsrl_pi0
+# module load devel/miniforge
+# conda deactivate
+# conda activate dsrl_pi0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+cd "${REPO_ROOT}"
 export WANDB_API_KEY='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'
 export WANDB_EMAIL='noragorhan@gmail.com'
 export WANDB_USERNAME='noragorhan'
@@ -39,7 +42,7 @@ python3 examples/launch_train_sim.py \
 --algorithm pixel_sac \
 --env libero \
 --prefix dsrl_pi05_libero_90_task59 \
---suffix chunkreward_singleactorcritic_mlp_10replan_criticdim512_256_128 \
+--suffix chunkrewardcriticactor_mlp_realactionchunking \
 --wandb_project ${proj_name} \
 --batch_size 256 \
 --discount 0.999 \
@@ -49,16 +52,18 @@ python3 examples/launch_train_sim.py \
 --checkpoint_interval 200000 \
 --log_interval 500 \
 --eval_episodes 10 \
---multi_grad_step 20 \
+--multi_grad_step 2 \
 --start_online_updates 500 \
 --resize_image 64 \
 --action_magnitude 1.0 \
 --query_freq 10 \
+--hidden_dims 128 128 128 \
 --critic_hidden_dims 512 256 128 \
 --libero_suite "libero_90" \
 --libero_task_id 59 \
 --pi0_checkpoint pi05_libero \
 --chunk_reward 1 \
+--overlap_transitions 1 \
 --use_chunky_actor_critic 0 \
 --marginalize_logprobs 0 \
 --clip_actor_grad_norm 50.0 \

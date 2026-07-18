@@ -1,5 +1,7 @@
 #! /usr/bin/env python
 import os
+
+from jaxrl2.agents.pixel_sac.dsrl_na_learner import DSRLNALearner
 # Tell XLA to use Triton GEMM, this improves steps/sec by ~30% on some GPUs from https://github.com/huggingface/gym-aloha/tree/main?tab=readme-ov-file#-gpu-rendering-egl
 xla_flags = os.environ.get('XLA_FLAGS', '')
 xla_flags += ' --xla_gpu_triton_gemm_any=True'
@@ -25,7 +27,7 @@ from jaxrl2.data import ReplayBuffer
 from jaxrl2.utils.wandb_logger import WandBLogger, create_exp_name
 import tempfile
 from functools import partial
-from examples.train_utils_sim import trajwise_alternating_training_loop
+from examples.train_utils_sim import trajwise_alternating_training_loop, offline_to_online_training_loop
 from jaxrl2.utils.launch_util import get_full_config_dict, print_full_config
 import tensorflow as tf
 from jax.experimental.compilation_cache import compilation_cache
@@ -69,7 +71,7 @@ CHECKPOINTS = {
 }
 
 
-def _load_pi0_checkpoint(pi0_ckpt: str) -> pathlib.Path:
+def load_pi0_checkpoint(pi0_ckpt: str) -> pathlib.Path:
     if pi0_ckpt not in CHECKPOINTS:
         checkpoint_dir = pathlib.Path(pi0_ckpt).expanduser().resolve()
         if not checkpoint_dir.is_dir():
@@ -93,7 +95,7 @@ def _load_pi0_checkpoint(pi0_ckpt: str) -> pathlib.Path:
     return checkpoint_dir
 
 
-def _get_libero_env(task, resolution, seed):
+def get_libero_env(task, resolution, seed):
     """Initializes and returns the LIBERO environment, along with the task description."""
     task_description = task.language
     task_bddl_file = pathlib.Path(get_libero_path("bddl_files")) / task.problem_folder / task.bddl_file
@@ -139,8 +141,12 @@ class DummyEnv(gym.ObservationWrapper):
                 state_dim = 4
             obs_dict['state'] = Box(low=-1.0, high=1.0, shape=(state_dim, 1), dtype=np.float32)
         self.observation_space = Dict(obs_dict)
-        if variant.use_chunky_actor_critic:
+        if variant.use_chunky_actor_critic and variant.algorithm == 'pixel_sac':
             action_shape = (variant.pi0_action_horizon, 32)
+        elif variant.algorithm == 'dsrl_na' and variant.env == 'libero' and not variant.chunk_reward:
+            action_shape = (1, 7)
+        elif variant.algorithm == 'dsrl_na' and variant.env == 'libero' and variant.chunk_reward:
+            action_shape = (variant.pi0_action_horizon, 7)
         else:
             action_shape = (1, 32)
         self.action_space = Box(low=-1, high=1, shape=action_shape, dtype=np.float32)
@@ -176,14 +182,14 @@ def main(variant):
     variant.outputdir = os.path.join(outputdir, expname)
     if not os.path.exists(outputdir):
         os.makedirs(outputdir, exist_ok=True)
-    print('writing to output dir ', outputdir)
+    print('writing to output dir ', outputdir, flush=True)
     
     if variant.env == 'libero':
         benchmark_dict = benchmark.get_benchmark_dict()
         task_suite = benchmark_dict[variant.libero_suite]() # originally hardcoded: libero_90
         task_id = variant.libero_task_id # originally hardcoded: 57
         task = task_suite.get_task(task_id)
-        env, task_description = _get_libero_env(task, 256, variant.seed)
+        env, task_description = get_libero_env(task, 256, variant.seed)
         eval_env = env
         variant.task_description = task_description
         variant.env_max_reward = 1
@@ -237,14 +243,14 @@ def main(variant):
     variant.pi0_action_horizon = openpi_train_config.model.action_horizon
     variant.use_chunky_actor_critic = bool(getattr(variant, 'use_chunky_actor_critic', 0))
     variant.use_actor_diff = bool(getattr(variant, 'use_actor_diff', 0))
+    variant.overlap_transitions = bool(getattr(variant, 'overlap_transitions', 0))
     assert not (variant.use_actor_diff and variant.marginalize_logprobs), \
         "use_actor_diff and marginalize_logprobs are mutually exclusive"
     variant.freeze_residual_steps = int(getattr(variant, 'freeze_residual_steps', 0))
     assert not (variant.freeze_residual_steps > 0 and not variant.use_actor_diff), \
         "freeze_residual_steps > 0 requires use_actor_diff=True"
-    if variant.use_chunky_actor_critic:
-        if variant.query_freq <= 0:
-            raise ValueError("use_chunky_actor_critic requires --query_freq > 0")
+    assert not (variant.overlap_transitions and not variant.chunk_reward), \
+        "overlap_transitions requires chunk_reward=1"
 
     dummy_env = DummyEnv(variant)
     sample_obs = add_batch_dim(dummy_env.observation_space.sample())
@@ -254,7 +260,7 @@ def main(variant):
     
 
     if variant.env == 'libero' or variant.env == 'metaworld':
-        checkpoint_dir = _load_pi0_checkpoint(pi0_ckpt)
+        checkpoint_dir = load_pi0_checkpoint(pi0_ckpt)
     elif variant.env == 'aloha_cube':
         checkpoint_dir = download.maybe_download("s3://openpi-assets/checkpoints/pi0_aloha_sim")
     else:
@@ -274,45 +280,63 @@ def main(variant):
         train_kwargs['num_qs'] = 4
     if variant.use_actor_diff:
         train_kwargs['target_entropy'] = -16.0
-    agent = PixelSACLearner(
-        variant.seed,
-        sample_obs,
-        sample_action,
-        chunk_reward=bool(variant.chunk_reward),
-        use_chunky_actor_critic=variant.use_chunky_actor_critic,
-        pi0_action_horizon=variant.pi0_action_horizon,
-        critic_hidden_dims=tuple(variant.critic_hidden_dims),
-        use_transformer_critic=variant.use_transformer_critic,
-        transformer_n_embd=variant.transformer_n_embd,
-        transformer_n_head=variant.transformer_n_head,
-        transformer_n_layer=variant.transformer_n_layer,
-        transformer_weight_norm=variant.transformer_weight_norm,
-        transformer_use_bias=variant.transformer_use_bias,
-        use_transformer_actor=variant.use_transformer_actor,
-        actor_transformer_d_model=variant.actor_transformer_d_model,
-        actor_transformer_n_layers=variant.actor_transformer_n_layers,
-        actor_transformer_n_heads=variant.actor_transformer_n_heads,
-        actor_transformer_dropout=variant.actor_transformer_dropout,
-        clip_actor_grad_norm=variant.clip_actor_grad_norm,
-        clip_critic_grad_norm=variant.clip_critic_grad_norm,
-        marginalize_logprobs=variant.marginalize_logprobs,
-        use_chunk_actor_transformer=variant.use_chunk_actor_transformer,
-        use_actor_diff=variant.use_actor_diff,
-        freeze_residual_steps=variant.freeze_residual_steps,
+    if variant.algorithm == 'dsrl_na':
+        agent = DSRLNALearner(
+            variant.seed,
+            sample_obs,
+            sample_action,
+            agent_dp=agent_dp,
+            use_chunky_actor_critic=variant.use_chunky_actor_critic,
+            pi0_action_horizon=variant.pi0_action_horizon,
+            pi0_microbatch_size=variant.pi0_microbatch_size,
+            critic_hidden_dims=tuple(variant.critic_hidden_dims),
+            hidden_dims=tuple(variant.hidden_dims),
+            num_qs=variant.num_qs,
+            transformer_n_embd=variant.transformer_n_embd,
+            transformer_n_head=variant.transformer_n_head,
+            transformer_n_layer=variant.transformer_n_layer,
+            transformer_weight_norm=variant.transformer_weight_norm,
+            transformer_use_bias=variant.transformer_use_bias,
+            **train_kwargs,
+        )
+    else:
+        agent = PixelSACLearner(
+            variant.seed,
+            sample_obs,
+            sample_action,
+            chunk_reward=bool(variant.chunk_reward),
+            use_chunky_actor_critic=variant.use_chunky_actor_critic,
+            pi0_action_horizon=variant.pi0_action_horizon,
+            hidden_dims=tuple(variant.hidden_dims),
+            critic_hidden_dims=tuple(variant.critic_hidden_dims),
+            use_transformer_critic=variant.use_transformer_critic,
+            transformer_n_embd=variant.transformer_n_embd,
+            transformer_n_head=variant.transformer_n_head,
+            transformer_n_layer=variant.transformer_n_layer,
+            transformer_weight_norm=variant.transformer_weight_norm,
+            transformer_use_bias=variant.transformer_use_bias,
+            use_transformer_actor=variant.use_transformer_actor,
+            actor_transformer_d_model=variant.actor_transformer_d_model,
+            actor_transformer_n_layers=variant.actor_transformer_n_layers,
+            actor_transformer_n_heads=variant.actor_transformer_n_heads,
+            actor_transformer_dropout=variant.actor_transformer_dropout,
+            clip_actor_grad_norm=variant.clip_actor_grad_norm,
+            clip_critic_grad_norm=variant.clip_critic_grad_norm,
+            marginalize_logprobs=variant.marginalize_logprobs,
+            use_chunk_actor_transformer=variant.use_chunk_actor_transformer,
+            use_actor_diff=variant.use_actor_diff,
+            freeze_residual_steps=variant.freeze_residual_steps,
         **train_kwargs,
-    )
+        )
 
     if getattr(variant, 'restore_path', None) is not None:
         agent.restore_checkpoint(variant.restore_path)
 
-    config_extra = {
-        "pi0_checkpoint_dir": str(checkpoint_dir),
-        "openpi_config": config.name,
-        "online_buffer_size": variant.max_steps // variant.multi_grad_step,
-    }
     # print_full_config(variant, agent=agent, extra=config_extra)
-
-    online_buffer_size = variant.max_steps  // variant.multi_grad_step
+    if variant.chunk_reward:
+        online_buffer_size = variant.max_steps
+    else:
+        online_buffer_size = variant.max_steps // variant.multi_grad_step
     chunk_size = variant.query_freq if variant.chunk_reward else 0
     online_replay_buffer = ReplayBuffer(
         dummy_env.observation_space,
@@ -320,7 +344,12 @@ def main(variant):
         int(online_buffer_size),
         chunk_size=chunk_size,
     )
+    if variant.algorithm == 'dsrl_na':
+        online_replay_buffer.load_from_hdf5(variant.trajectory_hdf5_path, chunk_reward=variant.chunk_reward, query_freq=variant.query_freq, discount=variant.discount)
     replay_buffer = online_replay_buffer
     replay_buffer.seed(variant.seed)
-    trajwise_alternating_training_loop(variant, agent, env, eval_env, online_replay_buffer, replay_buffer, wandb_logger, shard_fn=shard_fn, agent_dp=agent_dp)
+    if variant.algorithm == 'dsrl_na':
+        offline_to_online_training_loop(variant, agent, env, eval_env, online_replay_buffer, replay_buffer, wandb_logger, shard_fn=shard_fn, agent_dp=agent_dp)
+    else:
+        trajwise_alternating_training_loop(variant, agent, env, eval_env, online_replay_buffer, replay_buffer, wandb_logger, shard_fn=shard_fn, agent_dp=agent_dp)
  

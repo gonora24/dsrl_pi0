@@ -27,6 +27,12 @@ if __name__ == '__main__':
     parser.add_argument('--resize_image', default=-1, help='the size of image if need resizing', type=int)
     parser.add_argument('--query_freq', default=-1, help='query frequency', type=int)
     parser.add_argument('--chunk_reward', default=0, help='sum discounted per-step env rewards within each action chunk for critic bootstrap (RLinf-style)', type=int)
+    parser.add_argument(
+        '--overlap_transitions', default=0, type=int,
+        help='When set with chunk_reward: collect per-env-step obs and store SAC noise '
+             'at every step, then insert overlapping Q-step reward windows (stride 1). '
+             'Requires --chunk_reward 1.',
+    )
     parser.add_argument('--use_chunky_actor_critic', default=0, help='use full (pi0_action_horizon x 32) noise for actor+critic; requires query_freq == pi0 horizon. If off, actor outputs 32-d noise repeated to pi0 length.', type=int)
     parser.add_argument('--use_transformer_critic', default=0, help='use transformer critic', type=int)
     parser.add_argument('--transformer_n_embd', default=256, help='transformer embedding dimension', type=int)
@@ -49,7 +55,12 @@ if __name__ == '__main__':
     parser.add_argument('--use_actor_diff', default=0, help='use autoregressive difference predictor', type=int)
     parser.add_argument('--freeze_residual_steps', default=0, type=int,
                         help='freeze residual head gradients for first N steps (requires use_actor_diff)')
+    parser.add_argument('--num_qs', default=10, help='number of Q-heads', type=int)
     parser.add_argument('--critic_hidden_dims', default=[128, 128, 128], help='critic hidden dimensions', nargs="+", type=int)
+    parser.add_argument('--hidden_dims', default=[128, 128, 128], help='actor hidden dimensions', nargs="+", type=int)
+    parser.add_argument('--trajectory_hdf5_path', default=None, help='path to trajectory hdf5 file', type=str)
+    parser.add_argument('--num_offline_steps', default=0, help='Gradient steps on offline data before online collection starts', type=int)
+    parser.add_argument('--backup_entropy', default=0, help='backup entropy', type=int)
     parser.add_argument(
         '--pi0_checkpoint',
         default='openpi',
@@ -60,12 +71,16 @@ if __name__ == '__main__':
             "or a local directory containing either Orbax 'params/' or 'model.safetensors'."
         ),
     )
+    parser.add_argument(
+        '--pi0_microbatch_size', default=0, type=int,
+        help='Max batch size per Pi0 inference call during DSRL-NA updates. '
+             '0 = use full SAC batch_size (current behavior).',
+    )
     
     train_args_dict = dict(
         actor_lr=1e-4,
         critic_lr= 3e-4,
         temp_lr=3e-4,
-        hidden_dims= (128, 128, 128),
         cnn_features= (32, 32, 32, 32),
         cnn_strides= (2, 1, 1, 1),
         cnn_padding= 'VALID',
@@ -81,7 +96,6 @@ if __name__ == '__main__':
         use_spatial_softmax=True,
         softmax_temperature=-1,
         target_entropy='auto',
-        num_qs=10,
         action_magnitude=1.0,
         num_cameras=1,
         )

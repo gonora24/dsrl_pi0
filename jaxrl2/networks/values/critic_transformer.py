@@ -270,7 +270,7 @@ class CriticGPT(nn.Module):
             actions = actions[..., None, :] # [B, 1, action_dim]
 
         t = actions.shape[-2]
-        assert t + 1 <= self.action_horizon + 1
+        assert t + 1 <= self.action_horizon + 1, f't + 1: {t + 1} must be less than or equal to action_horizon + 1: {self.action_horizon + 1}, actions shape: {actions.shape}'
 
         # Context token: (state, image) -> [B, 1, n_embd]
         context_feat = jnp.concatenate([state_features, image_features], axis=-1)

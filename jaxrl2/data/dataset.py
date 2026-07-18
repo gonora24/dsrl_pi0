@@ -1,5 +1,5 @@
+from collections.abc import Mapping
 from typing import Dict, Iterable, Optional, Tuple, Union
-import collections
 import jax
 import numpy as np
 from gym.utils import seeding
@@ -47,11 +47,11 @@ def _split(dataset_dict: DatasetDict,
     return train_dataset_dict, test_dataset_dict
 
 
-def _sample(dataset_dict: Union[np.ndarray, DatasetDict],
+def _sample(dataset_dict: Union[np.ndarray, jax.Array, DatasetDict],
             indx: np.ndarray) -> DatasetDict:
-    if isinstance(dataset_dict, np.ndarray):
+    if isinstance(dataset_dict, (np.ndarray, jax.Array)):
         return dataset_dict[indx]
-    elif isinstance(dataset_dict, dict):
+    elif isinstance(dataset_dict, Mapping):
         batch = {}
         for k, v in dataset_dict.items():
             batch[k] = _sample(v, indx)

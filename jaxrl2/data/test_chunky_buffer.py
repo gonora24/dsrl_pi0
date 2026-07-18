@@ -336,5 +336,263 @@ class TestReplayBufferOnlineTraining:
         )
 
 
+def _make_raw_traj(T, action_dim=7, done_at=None):
+    """Build a synthetic collect_traj_chunked raw trajectory of T env steps.
+
+    done_at: optional step index (0-based) at which done=True fires early.
+    """
+    obs_shape = (3,)  # dummy spatial dims
+
+    # T+1 obs dicts with a fake batch dim matching the real collector format
+    all_obs = [
+        {
+            "pixels": np.full((1, *obs_shape, 1), float(t), dtype=np.float32),
+        }
+        for t in range(T + 1)
+    ]
+
+    all_actions = [np.full((action_dim,), float(t), dtype=np.float32) for t in range(T)]
+
+    step_rewards = []
+    step_terminations = []
+    for t in range(T):
+        is_done = (done_at is not None and t >= done_at)
+        step_rewards.append(0.0 if is_done else -1.0)
+        step_terminations.append(is_done)
+
+    return {
+        "observations": all_obs,
+        "all_actions": all_actions,
+        "step_rewards": step_rewards,
+        "step_terminations": step_terminations,
+        "episode_return": float(sum(step_rewards)),
+        "is_success": False,
+        "env_steps": T,
+    }
+
+
+class TestBuildChunkedInsertTraj:
+
+    def test_transition_count_clean_episode(self):
+        from examples.train_utils_sim import _build_chunked_insert_traj
+        Q, T = 4, 12
+        raw = _make_raw_traj(T)
+        traj = _build_chunked_insert_traj(raw, Q)
+        assert traj["num_transitions"] == T - Q + 1
+        assert len(traj["observations"]) == T - Q + 1
+        assert len(traj["actions"]) == T - Q + 1
+
+    def test_zero_transitions_when_episode_shorter_than_chunk(self):
+        from examples.train_utils_sim import _build_chunked_insert_traj
+        Q, T = 10, 5
+        raw = _make_raw_traj(T)
+        traj = _build_chunked_insert_traj(raw, Q)
+        assert traj["num_transitions"] == 0
+        assert len(traj["observations"]) == 0
+
+    def test_obs_next_obs_alignment(self):
+        from examples.train_utils_sim import _build_chunked_insert_traj
+        Q, T = 3, 9
+        raw = _make_raw_traj(T)
+        traj = _build_chunked_insert_traj(raw, Q)
+        for t in range(traj["num_transitions"]):
+            # obs shape is (1, obs_dim, 1); [0, 0, 0] gives the first element = t
+            np.testing.assert_allclose(
+                traj["observations"][t]["pixels"][0, 0, 0],
+                float(t),
+            )
+            np.testing.assert_allclose(
+                traj["next_observations"][t]["pixels"][0, 0, 0],
+                float(t + Q),
+            )
+
+    def test_actions_cover_correct_steps(self):
+        from examples.train_utils_sim import _build_chunked_insert_traj
+        Q, T, A = 4, 10, 7
+        raw = _make_raw_traj(T, action_dim=A)
+        traj = _build_chunked_insert_traj(raw, Q)
+        for t in range(traj["num_transitions"]):
+            chunk = traj["actions"][t]
+            assert chunk.shape == (Q, A)
+            for k in range(Q):
+                np.testing.assert_allclose(chunk[k], float(t + k))
+
+    def test_next_actions_fallback_for_final_window(self):
+        from examples.train_utils_sim import _build_chunked_insert_traj
+        Q, T = 4, 10
+        raw = _make_raw_traj(T)
+        traj = _build_chunked_insert_traj(raw, Q)
+        N = traj["num_transitions"]
+        last_t = N - 1  # t = T - Q = 6
+        # For the last window t=6: t + 2Q = 14 > T=10, so next_actions = current chunk
+        np.testing.assert_array_equal(
+            traj["next_actions"][last_t],
+            traj["actions"][last_t],
+        )
+        # For a non-final window t=0: t + 2Q = 8 <= T=10, proper next chunk
+        np.testing.assert_array_equal(
+            traj["next_actions"][0],
+            np.stack(raw["all_actions"][Q: 2 * Q]),
+        )
+
+    def test_rewards_shape_and_values(self):
+        from examples.train_utils_sim import _build_chunked_insert_traj
+        Q, T = 3, 9
+        raw = _make_raw_traj(T)  # no done → all rewards are -1
+        traj = _build_chunked_insert_traj(raw, Q)
+        for t in range(traj["num_transitions"]):
+            r = traj["rewards"][t]
+            assert r.shape == (Q,)
+            assert r.dtype == np.float32
+            np.testing.assert_array_equal(r, np.full(Q, -1.0, dtype=np.float32))
+
+    def test_masks_zero_when_termination_in_window(self):
+        from examples.train_utils_sim import _build_chunked_insert_traj
+        Q, T = 4, 8
+        done_at = 5  # done fires at step 5
+        raw = _make_raw_traj(T, done_at=done_at)
+        traj = _build_chunked_insert_traj(raw, Q)
+        for t in range(traj["num_transitions"]):
+            # Window [t, t+Q) contains a terminal step if done_at is within it
+            has_terminal = any(raw["step_terminations"][t: t + Q])
+            expected_mask = 0.0 if has_terminal else 1.0
+            assert traj["masks"][t] == expected_mask, (
+                f"window {t}: expected mask {expected_mask}, got {traj['masks'][t]}"
+            )
+
+    def test_terminations_shape(self):
+        from examples.train_utils_sim import _build_chunked_insert_traj
+        Q, T = 5, 15
+        raw = _make_raw_traj(T)
+        traj = _build_chunked_insert_traj(raw, Q)
+        for t in range(traj["num_transitions"]):
+            term = traj["terminations"][t]
+            assert term.shape == (Q,)
+            assert term.dtype == np.bool_
+
+    def test_buffer_insert_succeeds_with_chunked_traj(self):
+        """End-to-end: _build_chunked_insert_traj output can be inserted into a chunked buffer."""
+        import types
+        from examples.train_utils_sim import _build_chunked_insert_traj, add_online_data_to_buffer
+        import gym.spaces as spaces
+
+        Q, T, obs_dim, action_dim = 4, 12, 3, 7
+
+        # obs from _make_raw_traj have shape (1, obs_dim, 1); after batch-dim strip → (obs_dim, 1)
+        obs_space = spaces.Dict({
+            "pixels": spaces.Box(low=0.0, high=255.0, shape=(obs_dim, 1), dtype=np.float32),
+        })
+        action_space = spaces.Box(low=-1.0, high=1.0, shape=(Q, action_dim), dtype=np.float32)
+        buffer = ReplayBuffer(obs_space, action_space, capacity=50, chunk_size=Q)
+
+        raw = _make_raw_traj(T, action_dim=action_dim)
+        traj = _build_chunked_insert_traj(raw, Q)
+
+        variant = types.SimpleNamespace(
+            query_freq=Q,
+            discount=0.99,
+            add_states=False,
+        )
+        add_online_data_to_buffer(variant, traj, buffer)
+
+        assert buffer.size == traj["num_transitions"]
+        assert buffer.data["rewards"].shape[1] == Q
+        assert buffer.data["actions"].shape == (buffer.capacity, Q, action_dim)
+
+
+def _make_raw_noise_traj(T, H=50, noise_dim=32, query_freq=10, done_at=None):
+    """Synthetic collect_traj_chunked(store_noise=True) raw trajectory.
+
+    Noise is constant within each replan block of length query_freq.
+    """
+    obs_shape = (3,)
+    all_obs = [
+        {"pixels": np.full((1, *obs_shape, 1), float(t), dtype=np.float32)}
+        for t in range(T + 1)
+    ]
+    all_actions = []
+    step_rewards = []
+    step_terminations = []
+    for t in range(T):
+        block = t // query_freq
+        noise = np.full((H, noise_dim), float(block), dtype=np.float32)
+        all_actions.append(noise)
+        is_done = done_at is not None and t >= done_at
+        step_rewards.append(0.0 if is_done else -1.0)
+        step_terminations.append(is_done)
+    return {
+        "observations": all_obs,
+        "all_actions": all_actions,
+        "step_rewards": step_rewards,
+        "step_terminations": step_terminations,
+        "episode_return": float(sum(step_rewards)),
+        "is_success": False,
+        "env_steps": T,
+    }
+
+
+class TestBuildChunkedInsertTrajNoiseMode:
+
+    def test_transition_count_and_shapes(self):
+        from examples.train_utils_sim import _build_chunked_insert_traj
+        Q, T, H, D = 4, 12, 50, 32
+        raw = _make_raw_noise_traj(T, H=H, noise_dim=D, query_freq=Q)
+        traj = _build_chunked_insert_traj(raw, Q, stack_actions=False)
+        assert traj["num_transitions"] == T - Q + 1
+        for t in range(traj["num_transitions"]):
+            assert traj["actions"][t].shape == (H, D)
+            assert traj["next_actions"][t].shape == (H, D)
+            assert traj["rewards"][t].shape == (Q,)
+
+    def test_noise_constant_within_replan_block(self):
+        from examples.train_utils_sim import _build_chunked_insert_traj
+        Q, T, H, D = 4, 12, 8, 4
+        raw = _make_raw_noise_traj(T, H=H, noise_dim=D, query_freq=Q)
+        traj = _build_chunked_insert_traj(raw, Q, stack_actions=False)
+        # Windows starting in the same replan block share the same noise
+        np.testing.assert_array_equal(traj["actions"][0], traj["actions"][1])
+        np.testing.assert_array_equal(traj["actions"][0], traj["actions"][Q - 1])
+        # First window of the next block differs
+        assert not np.array_equal(traj["actions"][0], traj["actions"][Q])
+
+    def test_next_action_uses_step_t_plus_Q(self):
+        from examples.train_utils_sim import _build_chunked_insert_traj
+        Q, T, H, D = 4, 12, 8, 4
+        raw = _make_raw_noise_traj(T, H=H, noise_dim=D, query_freq=Q)
+        traj = _build_chunked_insert_traj(raw, Q, stack_actions=False)
+        np.testing.assert_array_equal(traj["next_actions"][0], raw["all_actions"][Q])
+        # Last window: t = T - Q = 8; t + Q = 12 == T → fallback to current
+        last_t = traj["num_transitions"] - 1
+        np.testing.assert_array_equal(
+            traj["next_actions"][last_t], traj["actions"][last_t]
+        )
+
+    def test_buffer_insert_succeeds_with_noise_traj(self):
+        import types
+        from examples.train_utils_sim import _build_chunked_insert_traj, add_online_data_to_buffer
+        import gym.spaces as spaces
+
+        Q, T, H, D, obs_dim = 4, 12, 50, 32, 3
+        obs_space = spaces.Dict({
+            "pixels": spaces.Box(low=0.0, high=255.0, shape=(obs_dim, 1), dtype=np.float32),
+        })
+        action_space = spaces.Box(low=-1.0, high=1.0, shape=(H, D), dtype=np.float32)
+        buffer = ReplayBuffer(obs_space, action_space, capacity=50, chunk_size=Q)
+
+        raw = _make_raw_noise_traj(T, H=H, noise_dim=D, query_freq=Q)
+        traj = _build_chunked_insert_traj(raw, Q, stack_actions=False)
+
+        variant = types.SimpleNamespace(
+            query_freq=Q,
+            discount=0.99,
+            add_states=False,
+        )
+        add_online_data_to_buffer(variant, traj, buffer)
+
+        assert buffer.size == traj["num_transitions"]
+        assert buffer.data["rewards"].shape[1] == Q
+        assert buffer.data["actions"].shape == (buffer.capacity, H, D)
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

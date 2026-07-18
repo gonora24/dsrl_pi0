@@ -1,5 +1,6 @@
 from typing import Union
 from typing import Iterable, Optional
+import h5py
 import jax 
 import gym
 import gym.spaces
@@ -241,3 +242,88 @@ class ReplayBuffer(Dataset):
         self._traj_counter = save_dict['_traj_counter']
         self._start = save_dict['_start']
         self.traj_bounds = save_dict['traj_bounds']
+
+    def load_from_hdf5(self, filename: str, chunk_reward: bool = False,
+                       query_freq: int = 10, discount: float = 0.999):
+        """Load trajectories from an HDF5 file into the replay buffer.
+
+        Args:
+            filename: Path to the HDF5 file written by collect_trajectories.py.
+            chunk_reward: If False, insert one transition per env step. If True,
+                insert transitions with a sliding window of size query_freq so
+                that actions/rewards/terminations are arrays of length Q.
+            query_freq: Sliding window size (Q) used when chunk_reward=True.
+            discount: Base discount factor. Applied as discount^1 for step-level
+                transitions, and discount^Q for chunked transitions.
+        """
+        with h5py.File(filename, 'r') as f:
+            for demo_key in sorted(f['data'].keys()):
+                demo = f['data'][demo_key]
+
+                pixels = demo['obs/pixels'][:]                       # (T+1, H, W, C)
+                state = demo['obs/state'][:] if 'obs/state' in demo else None  # (T+1, 8)
+                actions = demo['actions'][:]                          # (T, action_dim)
+                rewards = demo['rewards'][:]                          # (T,)
+                terminations = demo['terminations'][:]                # (T,)
+                masks = demo['masks'][:]                              # (T,)
+                T = len(actions)
+
+                # HDF5 saves pixels as (T+1, H, W, C) but some envs/models use a
+                # camera axis, e.g. (H, W, C, num_cameras). Match replay storage.
+                if 'observations' in self.data and isinstance(self.data['observations'], dict) and 'pixels' in self.data['observations']:
+                    expected_pix_shape = tuple(self.data['observations']['pixels'][0].shape)
+                    if tuple(pixels.shape[1:]) != expected_pix_shape:
+                        if tuple(pixels.shape[1:]) + (1,) == expected_pix_shape:
+                            pixels = pixels[..., None]
+                if 'observations' in self.data and isinstance(self.data['observations'], dict) and 'state' in self.data['observations']:
+                    expected_state_shape = tuple(self.data['observations']['state'][0].shape)
+                    if tuple(state.shape[1:]) != expected_state_shape:
+                        if tuple(state.shape[1:]) + (1,) == expected_state_shape:
+                            state = state[..., None]
+
+                if not chunk_reward:
+                    for t in range(T):
+                        obs = {'pixels': pixels[t]}
+                        if state is not None:
+                            obs['state'] = state[t]
+                        next_obs = {'pixels': pixels[t + 1]}
+                        if state is not None:
+                            next_obs['state'] = state[t + 1]
+
+                        self.insert({
+                            'observations': obs,
+                            'next_observations': next_obs,
+                            'actions': actions[t],
+                            'next_actions': actions[t + 1] if t < T - 1 else actions[t],
+                            'rewards': rewards[t],
+                            'masks': masks[t],
+                            'discount': discount,
+                        })
+                else:
+                    Q = query_freq
+                    chunk_discount = discount ** Q
+                    for t in range(T - Q + 1):
+                        obs = {'pixels': pixels[t]}
+                        if state is not None:
+                            obs['state'] = state[t]
+                        next_obs = {'pixels': pixels[t + Q]}
+                        if state is not None:
+                            next_obs['state'] = state[t + Q]
+
+                        if t + 2 * Q <= T:
+                            next_actions = actions[t + Q:t + 2 * Q]
+                        else:
+                            next_actions = actions[t:t + Q]
+
+                        self.insert({
+                            'observations': obs,
+                            'next_observations': next_obs,
+                            'actions': actions[t:t + Q],
+                            'next_actions': next_actions,
+                            'rewards': rewards[t:t + Q],
+                            'terminations': terminations[t:t + Q],
+                            'masks': masks[t],
+                            'discount': chunk_discount,
+                        })
+
+                self.increment_traj_counter()
