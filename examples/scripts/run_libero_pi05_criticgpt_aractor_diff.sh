@@ -13,7 +13,7 @@ export WANDB_USERNAME='noragorhan'
 export WANDB_TEAM='noragorhan-karlsruhe-institute-of-technology'
 proj_name=DSRL_pi0_Libero
 device_id=0
-wandb_mode=offline  # online or offline
+wandb_mode=online  # online or offline
 export WANDB_MODE=${wandb_mode}
 
 export OUTPUT_DIR=/pfs/work9/workspace/scratch/ka_eu3660-rlinf_tmp/DSRL_pi0_Libero
@@ -39,14 +39,14 @@ python3 examples/launch_train_sim.py \
 --algorithm pixel_sac \
 --env libero \
 --prefix dsrl_pi05_libero_90_task59 \
---suffix criticgpt_aractor_10replan \
+--suffix criticgpt_diffaractor_10replan_clipaction_tanhresidual_freezeresidual100k \
 --wandb_project ${proj_name} \
 --batch_size 256 \
 --discount 0.999 \
 --seed 0 \
 --max_steps 1000000 \
 --eval_interval 10000 \
---checkpoint_interval -1 \
+--checkpoint_interval 200000 \
 --log_interval 500 \
 --eval_episodes 10 \
 --multi_grad_step 20 \
@@ -72,7 +72,10 @@ python3 examples/launch_train_sim.py \
 --actor_transformer_n_layers 3 \
 --actor_transformer_n_heads 4 \
 --actor_transformer_dropout 0.0 \
---use_aractor_diff 1 \
+--use_actor_diff 1 \
 --marginalize_logprobs 0 \
+--freeze_residual_steps 100000 \
+--clip_actor_grad_norm 1000.0 \
+--clip_critic_grad_norm 1000.0 \
 
 ## batch size 256, multi grad step 20, hidden dims 50, entropy scaling is auto

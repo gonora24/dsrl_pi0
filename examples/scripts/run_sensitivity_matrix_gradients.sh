@@ -13,10 +13,9 @@ export PYTHONPATH=$PYTHONPATH:/pfs/data6/home/ka/ka_anthropomatik/ka_eu3660/proj
 
 export NOISE_ACTOR_DIR="/pfs/work9/workspace/scratch/ka_eu3660-rlinf_tmp/DSRL_pi0_Libero/dsrl_pi05_libero_90_task28_2026_07_06_17_08_06_0000--s-0_baseline/checkpoint500000"
 
-python3 jaxrl2/tests/finite_differences.py \
+python3 jaxrl2/tests/gradient_sensitivity.py \
     --libero_suite libero_90 \
-    --N 500 \
-    --num_directions 10 \
-    --eps 1e-3 \
+    --task_id 28 \
+    --N 300 \
     --seed 0 \
-    --filename "sensitivity_matrix_libero_90_500states_randomnoise"
+    --filename "gradient_sensitivity_libero_90_task28_300states"

@@ -197,7 +197,11 @@ class AutoregressiveActorTransformer(nn.Module):
             for _ in range(self.n_layers)
         ]
         self.out = nn.Dense(self.action_dim * 2)
-        self.residual_out = nn.Dense(self.action_dim, kernel_init=nn.initializers.uniform(0.0))
+        self.residual_out = nn.Dense(
+            self.action_dim,
+            kernel_init=nn.initializers.zeros,
+            bias_init=nn.initializers.zeros,
+        )
 
     def _empty_kv_cache(self, batch_size: int, dtype) -> tuple:
         """Pre-allocated per-layer (k, v) caches: [B, n_heads, chunk_size+1, head_dim]."""

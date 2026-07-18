@@ -239,6 +239,9 @@ def main(variant):
     variant.use_actor_diff = bool(getattr(variant, 'use_actor_diff', 0))
     assert not (variant.use_actor_diff and variant.marginalize_logprobs), \
         "use_actor_diff and marginalize_logprobs are mutually exclusive"
+    variant.freeze_residual_steps = int(getattr(variant, 'freeze_residual_steps', 0))
+    assert not (variant.freeze_residual_steps > 0 and not variant.use_actor_diff), \
+        "freeze_residual_steps > 0 requires use_actor_diff=True"
     if variant.use_chunky_actor_critic:
         if variant.query_freq <= 0:
             raise ValueError("use_chunky_actor_critic requires --query_freq > 0")
@@ -295,6 +298,7 @@ def main(variant):
         marginalize_logprobs=variant.marginalize_logprobs,
         use_chunk_actor_transformer=variant.use_chunk_actor_transformer,
         use_actor_diff=variant.use_actor_diff,
+        freeze_residual_steps=variant.freeze_residual_steps,
         **train_kwargs,
     )
 

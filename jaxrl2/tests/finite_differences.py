@@ -21,7 +21,7 @@ def create_libero_env(task, resolution, seed):
     env.seed(seed)
     return env
 
-def _prepare_pi0_noise(actions_noise, agent, pi0_action_horizon):
+def _prepare_pi0_noise(actions_noise, pi0_action_horizon):
     """Reshape SAC noise and pad to pi0's inference horizon if needed."""
     # actions_noise = np.reshape(actions_noise, agent.action_chunk_shape)
     noise = actions_noise[None] if actions_noise.shape[0] > 1 else actions_noise
@@ -284,11 +284,13 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100,
 
     print("Loading pi05 policy...", flush=True)
     agent_dp = policy_load()
-    print("Restoring DSRL noise actor...", flush=True)
-    agent = load_noise_actor(noise_actor_dir)
-
-    C, D = agent.action_chunk_shape       # e.g. (1, 32) baseline, (10, 32) chunky
-    print(f"agent.action_chunk_shape: {agent.action_chunk_shape}")
+    if noise_actor_dir is not None:
+        print("Restoring DSRL noise actor...", flush=True)
+        agent = load_noise_actor(noise_actor_dir)
+        C, D = agent.action_chunk_shape       # e.g. (1, 32) baseline, (10, 32) chunky
+    else:
+        C, D = (10, 32)
+    print(f"C, D: {C, D}")
     pi05_horizon = agent_dp.action_horizon    # 10
 
     # Wrap pi0 inference as a (obs_pi_zero, noise_cd) → (T, A) function.
@@ -299,28 +301,50 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100,
         Converts the 2-D DSRL latent to the 3-D format expected by pi0,
         runs inference, and returns the (T, A) action chunk.
         """
-        noise_pi0 = _prepare_pi0_noise(noise_cd, agent, pi05_horizon)  # (1, T, D)
-        return agent_dp.infer(obs_pi_zero, noise=noise_pi0)["actions"]  # (T, A)
+
+        noise_cd = _prepare_pi0_noise(noise_cd, pi05_horizon)  # (1, T, D)
+        return agent_dp.infer(obs_pi_zero, noise=noise_cd)["actions"]  # (T, A)
 
     # Set up LIBERO environment and variant descriptor
     benchmark_dict = benchmark.get_benchmark_dict()
     task_suite = benchmark_dict[libero_suite]()
-    task = task_suite.get_task(task_id)
-    init_states = task_suite.get_task_init_states(task_id)
-    num_init_states = len(init_states)
+
+    # Build a sampling pool of (task, init_state). If task_id is omitted, sample
+    # from all tasks in the suite; otherwise stay task-specific.
+    if task_id is None:
+        state_pool = []
+        for tid in range(task_suite.n_tasks):
+            suite_task = task_suite.get_task(tid)
+            suite_init_states = task_suite.get_task_init_states(tid)
+            for init_state in suite_init_states:
+                state_pool.append((suite_task, init_state))
+        if len(state_pool) == 0:
+            raise ValueError(f"No init states found for suite {libero_suite}")
+        print(f"Sampling from full suite: {task_suite.n_tasks} tasks, {len(state_pool)} init states")
+        task_for_env = state_pool[0][0]
+    else:
+        suite_task = task_suite.get_task(task_id)
+        suite_init_states = task_suite.get_task_init_states(task_id)
+        if len(suite_init_states) == 0:
+            raise ValueError(f"No init states found for suite {libero_suite}, task_id {task_id}")
+        state_pool = [(suite_task, init_state) for init_state in suite_init_states]
+        print(f"Sampling from task {task_id}: {len(state_pool)} init states")
+        task_for_env = suite_task
 
     variant = AttrDict({
         'env': 'libero',
         'resize_image': 64,
-        'task_description': task.language,
+        'task_description': task_for_env.language,
     })
 
-    env = create_libero_env(task, 256, seed)
+    env = create_libero_env(task_for_env, 256, seed)
 
-    def _collect_obs(init_state_idx):
-        """Reset env to a preset initial state and return obs dicts."""
+    def _collect_obs(sample_idx):
+        """Reset env to one sampled state and return obs dicts."""
+        task_i, init_state_i = state_pool[sample_idx % len(state_pool)]
+        variant.task_description = task_i.language
         env.reset()
-        obs = env.set_init_state(init_states[init_state_idx % num_init_states])
+        obs = env.set_init_state(init_state_i)
         curr_image = obs_to_img(obs, variant)
         qpos = obs_to_qpos(obs, variant)
         obs_dict = {
@@ -332,15 +356,19 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100,
 
     # Single-state sanity check (first init state)
     obs_dict_0, obs_pi_zero_0 = _collect_obs(0)
-    noise_cd_0 = agent.sample_actions(obs_dict_0, marginalize_logprobs=False, use_actor_diff=False) 
-
-    if agent.action_chunk_shape[0] == 1:
-        noise_repeat = np.repeat(
-            noise_cd_0[-1:, :], pi05_horizon - noise_cd_0.shape[0], axis=0
-        )
-        noise_cd_0 = np.concatenate([noise_cd_0, noise_repeat], axis=0)
+    if noise_actor_dir is not None:
+        noise_cd_0 = agent.sample_actions(obs_dict_0, marginalize_logprobs=False, use_actor_diff=False) 
     else:
-        noise_cd_0 = noise_cd_0[0]
+        noise_cd_0 = jax.random.normal(jax.random.PRNGKey(seed), (C, D))
+
+    if noise_actor_dir is not None:
+        if agent.action_chunk_shape[0] == 1:
+            noise_repeat = np.repeat(
+                noise_cd_0[-1:, :], pi05_horizon - noise_cd_0.shape[0], axis=0
+            )
+            noise_cd_0 = np.concatenate([noise_cd_0, noise_repeat], axis=0)
+        else:
+            noise_cd_0 = noise_cd_0[0]  
     print(f"noise_cd_0 shape: {noise_cd_0.shape}")
 
     mat_0 = sensitivity_matrix(
@@ -357,14 +385,17 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100,
 
     for i in range(N):
         obs_dict_i, obs_pi_zero_i = _collect_obs(i)
-        noise_cd_i = agent.sample_actions(obs_dict_i, marginalize_logprobs=False, use_actor_diff=False)
-        if agent.action_chunk_shape[0] == 1:
-            noise_repeat = np.repeat(
-                noise_cd_i[-1:, :], pi05_horizon - noise_cd_i.shape[0], axis=0
-            )
-            noise_cd_i = np.concatenate([noise_cd_i, noise_repeat], axis=0)
+        if noise_actor_dir is not None:
+            noise_cd_i = agent.sample_actions(obs_dict_i, marginalize_logprobs=False, use_actor_diff=False)
+            if agent.action_chunk_shape[0] == 1:
+                noise_repeat = np.repeat(
+                    noise_cd_i[-1:, :], pi05_horizon - noise_cd_i.shape[0], axis=0
+                )
+                noise_cd_i = np.concatenate([noise_cd_i, noise_repeat], axis=0)
+            else:
+                noise_cd_i = noise_cd_i[0]
         else:
-            noise_cd_i = noise_cd_i[0]
+            noise_cd_i = jax.random.normal(jax.random.PRNGKey(seed), (C, D))
 
         states_list.append(obs_pi_zero_i)
         noises_list.append(noise_cd_i)
@@ -380,7 +411,11 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100,
 
     fig, ax = plot_sensitivity_matrix(
         mean_mat,
-        title=f"Avg. sensitivity  ({N} states,  {libero_suite} task {task_id})",
+        title=(
+            f"Avg. sensitivity ({N} states, {libero_suite} all_tasks)"
+            if task_id is None
+            else f"Avg. sensitivity ({N} states, {libero_suite} task {task_id})"
+        ),
         action_label=f"pi05 action timestep  i  (of {pi05_horizon})",
         latent_label=f"DSRL latent timestep  j  (of {C}, perturbed)",
     )
@@ -392,12 +427,12 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--noise_actor_dir", type=str, required=True,
+    parser.add_argument("--noise_actor_dir", type=str, default=None,
                         help="Path to checkpointXXX directory from PixelSACLearner")
     parser.add_argument("--libero_suite", type=str, default="libero_90",
                         help="LIBERO benchmark suite (default: libero_90)")
-    parser.add_argument("--task_id", type=int, default=28,
-                        help="Task index within the suite (default: 28)")
+    parser.add_argument("--task_id", type=int, default=None,
+                        help="Task index within the suite. If omitted, sample states across the whole suite.")
     parser.add_argument("--N", type=int, default=100,
                         help="Number of states to average over (default: 100)")
     parser.add_argument("--num_directions", type=int, default=20,

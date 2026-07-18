@@ -10,8 +10,20 @@ from jaxrl2.data.dataset import DatasetDict
 from jaxrl2.types import Params, PRNGKey
 
 
+def _maybe_freeze_residual(grads, step, freeze_steps):
+    """Zero out residual_out gradients while step < freeze_steps."""
+    def mask_leaf(path, g):
+        path_str = '/'.join(
+            k.key if hasattr(k, 'key') else str(k) for k in path
+        )
+        if 'residual_out' in path_str:
+            return jnp.where(step < freeze_steps, jnp.zeros_like(g), g)
+        return g
+    return jax.tree_util.tree_map_with_path(mask_leaf, grads)
+
+
 def update_actor(key: PRNGKey, actor: TrainState, critic: TrainState,
-                 temp: TrainState, batch: DatasetDict, cross_norm:bool=False, critic_reduction:str='min', marginalize_logprobs:bool=False, use_actor_diff:bool=False) -> Tuple[TrainState, Dict[str, float]]:
+                 temp: TrainState, batch: DatasetDict, cross_norm:bool=False, critic_reduction:str='min', marginalize_logprobs:bool=False, use_actor_diff:bool=False, freeze_residual_steps:int=0) -> Tuple[TrainState, Dict[str, float]]:
     
     key, key_act, key_dropout = jax.random.split(key, num=3)
 
@@ -89,6 +101,8 @@ def update_actor(key: PRNGKey, actor: TrainState, critic: TrainState,
         return actor_loss, (things_to_log, new_model_state)
 
     grads, (info, new_model_state) = jax.grad(actor_loss_fn, has_aux=True)(actor.params)
+    if freeze_residual_steps > 0:
+        grads = _maybe_freeze_residual(grads, actor.step, freeze_residual_steps)
     info = {**info, 'actor_grad_norm': optax.global_norm(grads)}
     
     if 'batch_stats' in new_model_state:

@@ -2,7 +2,7 @@
 #SBATCH --ntasks=1
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1 
-#SBATCH --job-name=dsrl_pi05_libero_90_task28_baseline
+#SBATCH --job-name=dsrl_pi05_libero_90_task59_baseline
 
 module load devel/miniforge
 conda deactivate
@@ -38,15 +38,15 @@ pip install "transformers==4.53.2"
 python3 examples/launch_train_sim.py \
 --algorithm pixel_sac \
 --env libero \
---prefix dsrl_pi05_libero_90_task28 \
+--prefix dsrl_pi05_libero_90_task59 \
 --suffix baseline \
 --wandb_project ${proj_name} \
 --batch_size 256 \
 --discount 0.999 \
 --seed 0 \
---max_steps 500000  \
+--max_steps 1000000  \
 --eval_interval 10000 \
---checkpoint_interval 100000 \
+--checkpoint_interval 200000 \
 --log_interval 500 \
 --eval_episodes 10 \
 --multi_grad_step 20 \
@@ -56,7 +56,7 @@ python3 examples/launch_train_sim.py \
 --query_freq 5 \
 --hidden_dims 128 \
 --libero_suite "libero_90" \
---libero_task_id 28 \
+--libero_task_id 59 \
 --pi0_checkpoint pi05_libero \
 --chunk_reward 0 \
 --use_chunky_actor_critic 0 \

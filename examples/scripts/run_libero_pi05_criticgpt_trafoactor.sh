@@ -13,7 +13,7 @@ export WANDB_USERNAME='noragorhan'
 export WANDB_TEAM='noragorhan-karlsruhe-institute-of-technology'
 proj_name=DSRL_pi0_Libero
 device_id=0
-wandb_mode=offline  # online or offline
+wandb_mode=online  # online or offline
 export WANDB_MODE=${wandb_mode}
 
 export PYTHONPATH="${PYTHONPATH}:/pfs/data6/home/ka/ka_anthropomatik/ka_eu3660/projects/dsrl_pi0/"
@@ -36,7 +36,7 @@ pip install "transformers==4.53.2"
 python3 examples/launch_train_sim.py \
 --algorithm pixel_sac \
 --env libero \
---prefix dsrl_pi05_libero_90_task28 \
+--prefix dsrl_pi05_libero_90_task59 \
 --suffix criticgpt_trafoactor_10replan_marginlp \
 --wandb_project ${proj_name} \
 --batch_size 256 \
@@ -46,15 +46,15 @@ python3 examples/launch_train_sim.py \
 --eval_interval 10000 \
 --checkpoint_interval -1 \
 --log_interval 500 \
---eval_episodes 1 \
+--eval_episodes 10 \
 --multi_grad_step 20 \
---start_online_updates 5 \
+--start_online_updates 500 \
 --resize_image 64 \
 --action_magnitude 1.0 \
 --query_freq 10 \
 --hidden_dims 128 \
 --libero_suite "libero_90" \
---libero_task_id 28 \
+--libero_task_id 59 \
 --pi0_checkpoint pi05_libero \
 --critic_hidden_dims 512 256 128 \
 --chunk_reward 1 \
@@ -73,3 +73,4 @@ python3 examples/launch_train_sim.py \
 --marginalize_logprobs 1 \
 
 ## batch size 256, multi grad step 20, hidden dims 50, entropy scaling is auto
+# marginalize logprobs wichtig für korrektes Verhalten in code

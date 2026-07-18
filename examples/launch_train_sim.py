@@ -47,6 +47,8 @@ if __name__ == '__main__':
     parser.add_argument('--use_chunk_actor_transformer', default=0, help='use chunk actor transformer', type=int)
     parser.add_argument('--marginalize_logprobs', default=0, help='marginalize logprobs', type=int)
     parser.add_argument('--use_actor_diff', default=0, help='use autoregressive difference predictor', type=int)
+    parser.add_argument('--freeze_residual_steps', default=0, type=int,
+                        help='freeze residual head gradients for first N steps (requires use_actor_diff)')
     parser.add_argument('--critic_hidden_dims', default=[128, 128, 128], help='critic hidden dimensions', nargs="+", type=int)
     parser.add_argument(
         '--pi0_checkpoint',
