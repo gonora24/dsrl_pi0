@@ -28,6 +28,7 @@ from jaxrl2.utils.wandb_logger import WandBLogger, create_exp_name
 import tempfile
 from functools import partial
 from examples.train_utils_sim import trajwise_alternating_training_loop, offline_to_online_training_loop
+from examples.xvla_policy import XVLAPolicy
 from jaxrl2.utils.launch_util import get_full_config_dict, print_full_config
 import tensorflow as tf
 from jax.experimental.compilation_cache import compilation_cache
@@ -141,14 +142,15 @@ class DummyEnv(gym.ObservationWrapper):
                 state_dim = 4
             obs_dict['state'] = Box(low=-1.0, high=1.0, shape=(state_dim, 1), dtype=np.float32)
         self.observation_space = Dict(obs_dict)
+        noise_dim = int(getattr(variant, 'dsrl_action_dim', 32))
         if variant.use_chunky_actor_critic and variant.algorithm == 'pixel_sac':
-            action_shape = (variant.pi0_action_horizon, 32)
+            action_shape = (variant.pi0_action_horizon, noise_dim)
         elif variant.algorithm == 'dsrl_na' and variant.env == 'libero' and not variant.chunk_reward:
             action_shape = (1, 7)
         elif variant.algorithm == 'dsrl_na' and variant.env == 'libero' and variant.chunk_reward:
             action_shape = (variant.pi0_action_horizon, 7)
         else:
-            action_shape = (1, 32)
+            action_shape = (1, noise_dim)
         self.action_space = Box(low=-1, high=1, shape=action_shape, dtype=np.float32)
 
 
@@ -183,6 +185,8 @@ def main(variant):
     if not os.path.exists(outputdir):
         os.makedirs(outputdir, exist_ok=True)
     print('writing to output dir ', outputdir, flush=True)
+
+    ## Environment
     
     if variant.env == 'libero':
         benchmark_dict = benchmark.get_benchmark_dict()
@@ -197,14 +201,20 @@ def main(variant):
             variant.env_max_reward = 0
         variant.libero_init_states = task_suite.get_task_init_states(task_id)
         # Match OpenPI libero eval horizons (examples/libero/main.py).
-        libero_max_timesteps = {
-            "libero_spatial": 250, #220, divisible by 50
-            "libero_object": 300, #280,
-            "libero_goal": 300,
-            "libero_10": 550, #520,
-            "libero_90": 400,
-        }
-        variant.max_timesteps = libero_max_timesteps.get(variant.libero_suite, 400)
+        if variant.vla == 'openpi':
+            libero_max_timesteps = {
+                "libero_spatial": 250, #220, divisible by 50
+                "libero_object": 300, #280,
+                "libero_goal": 300,
+                "libero_10": 550, #520,
+                "libero_90": 400,
+            }
+            variant.max_timesteps = libero_max_timesteps.get(variant.libero_suite, 400)
+        elif variant.vla == 'xvla':
+            variant.max_timesteps = 400
+        # Absolute control is enabled after each episode's delta settle
+        # (see prepare_libero_episode_for_xvla). Do NOT set use_delta=False here —
+        # zero dummy settle under absolute control teleports the EE to the origin.
     elif variant.env == 'metaworld':
         variant.max_timesteps = 400
         env, task_description = _get_metaworld_env(variant.metaworld_task_name, variant.seed)
@@ -227,7 +237,7 @@ def main(variant):
         variant.env_max_reward = 4
         variant.max_timesteps = 400
         
-
+    ## Wandb Logger    
     group_name = variant.prefix + '_' + variant.launch_group_id
     wandb_output_dir = tempfile.mkdtemp()
     wandb_logger = WandBLogger(variant.prefix != '', variant, variant.wandb_project, experiment_id=expname, output_dir=wandb_output_dir, group_name=group_name)
@@ -240,7 +250,6 @@ def main(variant):
     else:
         openpi_config_name = "pi0_aloha_sim"
     openpi_train_config = openpi_config.get_config(openpi_config_name)
-    variant.pi0_action_horizon = openpi_train_config.model.action_horizon
     variant.use_chunky_actor_critic = bool(getattr(variant, 'use_chunky_actor_critic', 0))
     variant.use_actor_diff = bool(getattr(variant, 'use_actor_diff', 0))
     variant.overlap_transitions = bool(getattr(variant, 'overlap_transitions', 0))
@@ -252,27 +261,51 @@ def main(variant):
     assert not (variant.overlap_transitions and not variant.chunk_reward), \
         "overlap_transitions requires chunk_reward=1"
 
+    ## Load Policy (before DummyEnv so horizon / noise dim match the VLA)
+    if variant.vla == 'openpi':
+        if variant.env == 'libero' or variant.env == 'metaworld':
+            checkpoint_dir = load_pi0_checkpoint(pi0_ckpt)
+        elif variant.env == 'aloha_cube':
+            checkpoint_dir = download.maybe_download("s3://openpi-assets/checkpoints/pi0_aloha_sim")
+        else:
+            raise NotImplementedError()
+        agent_dp = policy_config.create_trained_policy(openpi_train_config, checkpoint_dir)
+        variant.pi0_action_horizon = openpi_train_config.model.action_horizon
+        variant.dsrl_action_dim = 32
+        print(f"Loaded pi0 policy from {checkpoint_dir}", flush=True)
+    elif variant.vla == 'xvla' and variant.env == 'libero':
+        xvla_device = "cuda" if any(d.platform == "gpu" for d in devices) else "cpu"
+        agent_dp = XVLAPolicy.from_pretrained(
+            "2toINF/X-VLA-Libero",
+            device=xvla_device,
+            domain_id=3,
+            steps=10,
+        )
+        variant.pi0_action_horizon = agent_dp.action_horizon
+        variant.dsrl_action_dim = agent_dp.action_dim
+        # Absolute ee6d chunks must be executed in full before replan (official client).
+        if int(getattr(variant, 'query_freq', -1)) != int(agent_dp.action_horizon):
+            print(
+                f"Overriding query_freq {variant.query_freq} -> {agent_dp.action_horizon} "
+                f"for XVLA (must match action horizon)",
+                flush=True,
+            )
+            variant.query_freq = int(agent_dp.action_horizon)
+        print(
+            f"Loaded XVLA policy (horizon={agent_dp.action_horizon}, "
+            f"noise_dim={agent_dp.action_dim}, query_freq={variant.query_freq}, device={xvla_device})",
+            flush=True,
+        )
+    else:
+        raise NotImplementedError()
+
     dummy_env = DummyEnv(variant)
     sample_obs = add_batch_dim(dummy_env.observation_space.sample())
     sample_action = add_batch_dim(dummy_env.action_space.sample())
     print('sample obs shapes', [(k, v.shape) for k, v in sample_obs.items()])
     print('sample action shape', sample_action.shape)
-    
 
-    if variant.env == 'libero' or variant.env == 'metaworld':
-        checkpoint_dir = load_pi0_checkpoint(pi0_ckpt)
-    elif variant.env == 'aloha_cube':
-        checkpoint_dir = download.maybe_download("s3://openpi-assets/checkpoints/pi0_aloha_sim")
-    else:
-        raise NotImplementedError()
-
-    if variant.env == 'libero' or variant.env == 'metaworld':
-        config = openpi_train_config
-    else:
-        config = openpi_train_config
-
-    agent_dp = policy_config.create_trained_policy(config, checkpoint_dir)
-    print(f"Loaded pi0 policy from {checkpoint_dir}", flush=True)
+    ## Algorithm -> Model
     train_kwargs = dict(variant['train_kwargs'])
     if train_kwargs.pop('cosine_decay', False):
         train_kwargs['decay_steps'] = variant.max_steps
@@ -289,6 +322,7 @@ def main(variant):
             use_chunky_actor_critic=variant.use_chunky_actor_critic,
             pi0_action_horizon=variant.pi0_action_horizon,
             pi0_microbatch_size=variant.pi0_microbatch_size,
+            dsrl_action_dim=variant.dsrl_action_dim,
             critic_hidden_dims=tuple(variant.critic_hidden_dims),
             hidden_dims=tuple(variant.hidden_dims),
             num_qs=variant.num_qs,
@@ -307,6 +341,8 @@ def main(variant):
             chunk_reward=bool(variant.chunk_reward),
             use_chunky_actor_critic=variant.use_chunky_actor_critic,
             pi0_action_horizon=variant.pi0_action_horizon,
+            dsrl_action_dim=variant.dsrl_action_dim,
+            num_qs=variant.num_qs,
             hidden_dims=tuple(variant.hidden_dims),
             critic_hidden_dims=tuple(variant.critic_hidden_dims),
             use_transformer_critic=variant.use_transformer_critic,
@@ -332,8 +368,10 @@ def main(variant):
     if getattr(variant, 'restore_path', None) is not None:
         agent.restore_checkpoint(variant.restore_path)
 
+
+    ## Replay Buffer
     # print_full_config(variant, agent=agent, extra=config_extra)
-    if variant.chunk_reward:
+    if variant.chunk_reward and not variant.algorithm == 'dsrl_na':
         online_buffer_size = variant.max_steps
     else:
         online_buffer_size = variant.max_steps // variant.multi_grad_step

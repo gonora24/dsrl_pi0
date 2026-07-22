@@ -76,6 +76,7 @@ if __name__ == '__main__':
         help='Max batch size per Pi0 inference call during DSRL-NA updates. '
              '0 = use full SAC batch_size (current behavior).',
     )
+    parser.add_argument('--vla', default='openpi', help='vla type', type=str)
     
     train_args_dict = dict(
         actor_lr=1e-4,

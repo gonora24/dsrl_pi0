@@ -1,13 +1,12 @@
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 
 import jax
 import jax.numpy as jnp
 import numpy as np
-from openpi.policies.policy import Policy
 import optax
 from flax.training.train_state import TrainState
 
-from examples.train_utils_sim import obs_to_pi_zero_input
+from examples.train_utils_sim import obs_to_policy_input
 from jaxrl2.data.dataset import DatasetDict, _sample
 from jaxrl2.types import Params, PRNGKey
 
@@ -26,21 +25,25 @@ def _put_on_device(x, device):
     return jax.device_put(jnp.asarray(arr), device)
 
 
-def _infer_pi0_actions_single(agent_dp: Policy, obs, noise, variant) -> np.ndarray:
-    """Run a single pi0 inference call with inputs on the same device as the jitted model."""
+def _infer_pi0_actions_single(agent_dp: Any, obs, noise, variant) -> np.ndarray:
+    """Run a single policy inference call with inputs on the same device as the jitted model."""
     device = _pi0_device()
-    obs_pi_zero = obs_to_pi_zero_input(obs, variant)
-    obs_pi_zero = jax.tree.map(
+    obs_policy = obs_to_policy_input(obs, variant)
+    # XVLAPolicy expects numpy host tensors; OpenPI JAX Policy wants device arrays.
+    if getattr(variant, 'vla', 'openpi') == 'xvla':
+        return np.asarray(agent_dp.infer(obs_policy, noise=noise)['actions'], dtype=np.float32)
+
+    obs_policy = jax.tree.map(
         lambda x: _put_on_device(x, device),
-        obs_pi_zero,
+        obs_policy,
     )
     if noise is not None:
         noise = jax.device_put(jnp.asarray(noise), device)
-    return np.asarray(agent_dp.infer(obs_pi_zero, noise=noise)['actions'], dtype=np.float32)
+    return np.asarray(agent_dp.infer(obs_policy, noise=noise)['actions'], dtype=np.float32)
 
 
 def _infer_pi0_actions(
-        agent_dp: Policy, obs, noise, variant, microbatch_size: int = 0,
+        agent_dp: Any, obs, noise, variant, microbatch_size: int = 0,
 ) -> np.ndarray:
     """Run pi0 inference, optionally splitting the batch into smaller chunks."""
     batch_size = int(noise.shape[0])

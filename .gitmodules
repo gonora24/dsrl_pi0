@@ -4,3 +4,6 @@
 [submodule "openpi"]
 	path = openpi
 	url = git@github.com:gonora24/openpi.git
+[submodule "xvla"]
+	path = xvla
+	url = git@github.com:gonora24/X-VLA.git

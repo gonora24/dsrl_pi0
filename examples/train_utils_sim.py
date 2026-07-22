@@ -7,6 +7,27 @@ from openpi_client import image_tools
 import math
 import PIL
 
+LIBERO_DUMMY_ACTION = [0.0] * 6 + [-1.0]
+LIBERO_NUM_STEPS_WAIT = 10
+
+
+def prepare_libero_episode_for_xvla(env):
+    """Settle with delta actions, then switch to absolute EEF control.
+
+    Matches xvla/evaluation/libero/libero_client.py: dummy settle happens while
+    ``use_delta=True``; absolute mode is enabled only afterward. Calling this
+    after ``reset`` / ``set_init_state`` returns the post-settle observation.
+    """
+    for robot in env.env.robots:
+        robot.controller.use_delta = True
+    obs = None
+    for _ in range(LIBERO_NUM_STEPS_WAIT):
+        obs, _, _, _ = env.step(LIBERO_DUMMY_ACTION)
+    for robot in env.env.robots:
+        robot.controller.use_delta = False
+    return obs
+
+
 def _quat2axisangle(quat):
     """
     Copied from robosuite: https://github.com/ARISE-Initiative/robosuite/blob/eafb81f54ffc104f905ee48a16bb15f059176ad3/robosuite/utils/transform_utils.py#L490C1-L512C55
@@ -77,9 +98,91 @@ def obs_to_img(obs, variant):
         curr_image = obs["pixels"]["top"]
     else:
         raise NotImplementedError()
-    if variant.resize_image > 0: 
+    if variant.resize_image > 0:
         curr_image = np.array(PIL.Image.fromarray(curr_image).resize((variant.resize_image, variant.resize_image)))
     return curr_image
+
+
+def attach_libero_ee_pose(obs, env):
+    """Attach live EE pose fields used by XVLA Libero proprio packing."""
+    import pathlib
+    import sys
+
+    xvla_root = pathlib.Path(__file__).resolve().parents[1] / "xvla"
+    if str(xvla_root) not in sys.path:
+        sys.path.insert(0, str(xvla_root))
+    from evaluation.libero.action_processor import LiberoAbsActionProcessor
+
+    processor = LiberoAbsActionProcessor()
+    robot = env.env.robots[0]
+    obs = dict(obs)
+    obs["robo_pos"] = np.asarray(robot.controller.ee_pos, dtype=np.float32)
+    obs["robo_ori"] = processor.Mat_to_Rotate6D(
+        np.asarray(robot.controller.ee_ori_mat)
+    ).astype(np.float32)
+    return obs
+
+
+def obs_to_xvla_input(obs, variant, env=None):
+    """Build XVLAPolicy.infer obs dict from raw Libero or replay-buffer obs."""
+    if 'agentview_image' in obs:
+        if env is not None and ('robo_pos' not in obs or 'robo_ori' not in obs):
+            obs = attach_libero_ee_pose(obs, env)
+        out = {
+            "agentview_image": np.ascontiguousarray(obs["agentview_image"]),
+            "robot0_eye_in_hand_image": np.ascontiguousarray(obs["robot0_eye_in_hand_image"]),
+            "prompt": str(variant.task_description),
+        }
+        if "robo_pos" in obs and "robo_ori" in obs:
+            out["robo_pos"] = np.asarray(obs["robo_pos"], dtype=np.float32)
+            out["robo_ori"] = np.asarray(obs["robo_ori"], dtype=np.float32)
+        else:
+            out["robot0_eef_pos"] = np.asarray(obs["robot0_eef_pos"], dtype=np.float32)
+            out["robot0_eef_quat"] = np.asarray(obs["robot0_eef_quat"], dtype=np.float32)
+        return out
+
+    if 'pixels' in obs:
+        # Replay-buffer / DummyEnv path → OpenPI-like keys that XVLAPolicy also accepts.
+        pixels = np.asarray(obs['pixels'])
+        state = np.asarray(obs['state'])
+        if pixels.shape[-1] == 1:
+            pixels = pixels[..., 0]
+        if state.shape[-1] == 1:
+            state = state[..., 0]
+        if pixels.ndim == 3:
+            img = image_tools.convert_to_uint8(
+                image_tools.resize_with_pad(np.ascontiguousarray(pixels), 224, 224))
+            wrist_img = np.zeros((224, 224, 3), dtype=np.uint8)
+        else:
+            img = np.stack([
+                image_tools.convert_to_uint8(
+                    image_tools.resize_with_pad(np.ascontiguousarray(pixels[i]), 224, 224))
+                for i in range(pixels.shape[0])
+            ])
+            wrist_img = np.zeros((pixels.shape[0], 224, 224, 3), dtype=np.uint8)
+        return {
+            "observation/image": img,
+            "observation/wrist_image": wrist_img,
+            "observation/state": state.astype(np.float32),
+            "prompt": str(variant.task_description),
+        }
+
+    raise KeyError(
+        f"obs has neither 'agentview_image' nor 'pixels'; keys={list(obs.keys())}"
+    )
+
+
+def obs_to_policy_input(obs, variant, env=None):
+    """Dispatch to Pi0 or XVLA obs packing based on ``variant.vla``."""
+    if getattr(variant, 'vla', 'openpi') == 'xvla':
+        return obs_to_xvla_input(obs, variant, env=env)
+    return obs_to_pi_zero_input(obs, variant)
+
+
+def _maybe_reset_vla_policy(agent_dp):
+    if agent_dp is not None and hasattr(agent_dp, 'reset'):
+        agent_dp.reset()
+
 
 def obs_to_pi_zero_input(obs, variant):
     if 'agentview_image' in obs:
@@ -319,6 +422,12 @@ def trajwise_alternating_training_loop(variant, agent, env, eval_env, online_rep
     printed_pre_update_summary = False
 
     with tqdm(total=variant.max_steps, initial=0) as pbar:
+        print('performing evaluation for initial checkpoint')
+        if perform_control_evals:
+            perform_control_eval(agent, eval_env, i, variant, wandb_logger, agent_dp)
+        # Skip agent.perform_eval here: replay buffer is empty, so value/reward
+        # visualizations would fail (get_random_trajs with _traj_counter == 0).
+
         while i <= variant.max_steps:
             if getattr(variant, 'overlap_transitions', 0):
                 raw_traj = collect_traj_chunked(
@@ -351,14 +460,6 @@ def trajwise_alternating_training_loop(variant, agent, env, eval_env, online_rep
                     # print_pre_update_summary(variant, agent)
                     printed_pre_update_summary = True
                 for _ in range(num_gradsteps):
-                    # perform first visualization before updating
-                    if i == 0:
-                        print('performing evaluation for initial checkpoint')
-                        if perform_control_evals:
-                            perform_control_eval(agent, eval_env, i, variant, wandb_logger, agent_dp)
-                        if hasattr(agent, 'perform_eval'):
-                            agent.perform_eval(variant, i, wandb_logger, replay_buffer, replay_buffer_iterator, eval_env)
-
                     # online perform update once we have some amount of online trajs
                     batch = next(replay_buffer_iterator)
                     update_info = agent.update(batch)
@@ -455,9 +556,12 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
     chunk_reward = bool(variant.get('chunk_reward', 0))
 
     agent._rng, rng = jax.random.split(agent._rng)
+    _maybe_reset_vla_policy(agent_dp)
     
     if 'libero' in variant.env:
         obs = env.reset()
+        if getattr(variant, 'vla', 'openpi') == 'xvla':
+            obs = prepare_libero_episode_for_xvla(env)
     elif 'aloha' in variant.env:
         obs, _ = env.reset()
     elif 'metaworld' in variant.env:
@@ -493,7 +597,7 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
             assert agent_dp is not None
             # we then use the noise to sample the action from diffusion model
             rng, key = jax.random.split(rng)
-            obs_pi_zero = obs_to_pi_zero_input(obs, variant)
+            obs_policy = obs_to_policy_input(obs, variant, env=env)
             if i == 0:
                 noise = jax.random.normal(key, (1, *agent.action_chunk_shape))
                 if noise.shape[1] < variant.pi0_action_horizon:
@@ -507,7 +611,16 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
                                                      use_actor_diff=getattr(variant, 'use_actor_diff', False))
                 noise = _prepare_pi0_noise(actions_noise, agent, variant.pi0_action_horizon)
             
-            actions = agent_dp.infer(obs_pi_zero, noise=noise)["actions"]
+            infer_kwargs = {}
+            if getattr(variant, 'vla', 'openpi') == 'xvla':
+                infer_kwargs['proprio_from_step'] = query_frequency - 1
+            actions = agent_dp.infer(obs_policy, noise=noise, **infer_kwargs)["actions"]
+            print(f'actions: {actions.shape}')
+            print(f'actions_noise: {actions_noise.shape}')
+            print(f'actions max: {np.max(actions)}')
+            print(f'actions min: {np.min(actions)}')
+            print(f'actions_noise max: {np.max(actions_noise)}')
+            print(f'actions_noise min: {np.min(actions_noise)}')
             action_list.append(np.reshape(actions_noise, agent.action_chunk_shape))
             obs_list.append(obs_dict)
      
@@ -615,9 +728,12 @@ def collect_traj_chunked(variant, agent, env, i, agent_dp=None, store_noise=Fals
     env_max_reward = variant.env_max_reward
 
     agent._rng, rng = jax.random.split(agent._rng)
+    _maybe_reset_vla_policy(agent_dp)
 
     if 'libero' in variant.env:
         obs = env.reset()
+        if getattr(variant, 'vla', 'openpi') == 'xvla':
+            obs = prepare_libero_episode_for_xvla(env)
     elif 'aloha' in variant.env:
         obs, _ = env.reset()
     elif 'metaworld' in variant.env:
@@ -651,7 +767,7 @@ def collect_traj_chunked(variant, agent, env, i, agent_dp=None, store_noise=Fals
         if t % query_frequency == 0:
             assert agent_dp is not None
             rng, key = jax.random.split(rng)
-            obs_pi_zero = obs_to_pi_zero_input(obs, variant)
+            obs_policy = obs_to_policy_input(obs, variant, env=env)
             if i == 0:
                 noise = jax.random.normal(key, (1, *agent.action_chunk_shape))
                 if noise.shape[1] < variant.pi0_action_horizon:
@@ -668,7 +784,10 @@ def collect_traj_chunked(variant, agent, env, i, agent_dp=None, store_noise=Fals
                 )
                 noise = _prepare_pi0_noise(actions_noise, agent, variant.pi0_action_horizon)
 
-            actions = agent_dp.infer(obs_pi_zero, noise=noise)["actions"]
+            infer_kwargs = {}
+            if getattr(variant, 'vla', 'openpi') == 'xvla':
+                infer_kwargs['proprio_from_step'] = query_frequency - 1
+            actions = agent_dp.infer(obs_policy, noise=noise, **infer_kwargs)["actions"]
             if store_noise:
                 current_noise = np.reshape(
                     np.asarray(actions_noise, dtype=np.float32), agent.action_chunk_shape
@@ -819,8 +938,16 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
     log_video = True
 
     for rollout_id in range(variant.eval_episodes):
+        _maybe_reset_vla_policy(agent_dp)
         if 'libero' in variant.env:
-            obs = env.reset()
+            env.reset()
+            init_states = variant.libero_init_states
+            obs = env.set_init_state(init_states[rollout_id % len(init_states)])
+            if getattr(variant, 'vla', 'openpi') == 'xvla':
+                obs = prepare_libero_episode_for_xvla(env)
+            else:
+                for _ in range(LIBERO_NUM_STEPS_WAIT):
+                    obs, _, _, _ = env.step(LIBERO_DUMMY_ACTION)
         elif 'aloha' in variant.env:
             obs, _ = env.reset()
             
@@ -846,7 +973,7 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
                 rng, key = jax.random.split(rng)
                 assert agent_dp is not None
                 
-                obs_pi_zero = obs_to_pi_zero_input(obs, variant)
+                obs_policy = obs_to_policy_input(obs, variant, env=env)
                 
                 
                 if i == 0:
@@ -856,8 +983,11 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
                     actions_noise = agent.sample_actions(obs_dict, marginalize_logprobs=variant.marginalize_logprobs,
                                                          use_actor_diff=getattr(variant, 'use_actor_diff', False))
                     noise = _prepare_pi0_noise(actions_noise, agent, variant.pi0_action_horizon)
-                    
-                actions = agent_dp.infer(obs_pi_zero, noise=noise)["actions"]
+
+                infer_kwargs = {}
+                if getattr(variant, 'vla', 'openpi') == 'xvla':
+                    infer_kwargs['proprio_from_step'] = query_frequency - 1
+                actions = agent_dp.infer(obs_policy, noise=noise, **infer_kwargs)["actions"]
               
             action_t = actions[t % query_frequency]
             
