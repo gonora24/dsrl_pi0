@@ -615,12 +615,6 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
             if getattr(variant, 'vla', 'openpi') == 'xvla':
                 infer_kwargs['proprio_from_step'] = query_frequency - 1
             actions = agent_dp.infer(obs_policy, noise=noise, **infer_kwargs)["actions"]
-            print(f'actions: {actions.shape}')
-            print(f'actions_noise: {actions_noise.shape}')
-            print(f'actions max: {np.max(actions)}')
-            print(f'actions min: {np.min(actions)}')
-            print(f'actions_noise max: {np.max(actions_noise)}')
-            print(f'actions_noise min: {np.min(actions_noise)}')
             action_list.append(np.reshape(actions_noise, agent.action_chunk_shape))
             obs_list.append(obs_dict)
      
@@ -940,9 +934,9 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
     for rollout_id in range(variant.eval_episodes):
         _maybe_reset_vla_policy(agent_dp)
         if 'libero' in variant.env:
-            env.reset()
-            init_states = variant.libero_init_states
-            obs = env.set_init_state(init_states[rollout_id % len(init_states)])
+            obs = env.reset()
+            # init_states = variant.libero_init_states
+            # obs = env.set_init_state(init_states[rollout_id % len(init_states)])
             if getattr(variant, 'vla', 'openpi') == 'xvla':
                 obs = prepare_libero_episode_for_xvla(env)
             else:
