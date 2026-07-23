@@ -1,4 +1,11 @@
-"""XVLA gradient sensitivity: exact Jacobians via torch.func.jacrev."""
+"""XVLA gradient sensitivity via sequential reverse-mode AD.
+
+``torch.func.jacrev`` OOMs on XVLA (vmap over many VJPs through a multi-step
+transformer denoise). Same strategy as ``gradient_sensitivity_pytorch.py``:
+  1. checkpoint each denoise step,
+  2. one forward, then sequential ``autograd.grad`` per output scalar,
+  3. accumulate Frobenius block norms without materializing the full Jacobian.
+"""
 import argparse
 
 import jax
@@ -24,18 +31,16 @@ from libero.libero import benchmark
 
 
 def _preprocess_obs_xvla(agent_dp, obs_xvla):
-    """Encode an XVLA obs dict once (VLM + proprio) outside the jacrev path."""
+    """Encode an XVLA obs dict once (VLM + proprio) outside the grad path."""
     return agent_dp.encode_obs(obs_xvla)
 
 
 def gradient_sensitivity_matrix_xvla(agent_dp, obs_proc, noise_td):
-    """Exact (T_action, T_noise) sensitivity via torch.func.jacrev (XVLA).
+    """Exact (T_action, T_noise) sensitivity via sequential VJPs (XVLA).
 
-    Uses reverse-mode AD (``jacrev``) rather than ``jacfwd`` because
-    ``scaled_dot_product_attention`` does not implement forward-mode AD.
-
-    Differentiates model actions ``(T, 20)`` from ``generate_actions_from_enc``
-    (sigmoid gripper postprocess), not the hard-thresholded Libero 7-D actions.
+    Differentiates model actions ``(T, 20)`` from checkpointed
+    ``generate_actions_from_enc`` (sigmoid gripper postprocess), not the
+    hard-thresholded Libero 7-D actions.
     """
     enc = obs_proc["enc"]
     proprio = obs_proc["proprio"]
@@ -43,31 +48,55 @@ def gradient_sensitivity_matrix_xvla(agent_dp, obs_proc, noise_td):
     steps = agent_dp.steps
     model = agent_dp.model
 
-    # Copy so the tensor is writable (JAX arrays / non-writable numpy buffers).
     noise_t = torch.tensor(
         np.array(noise_td, dtype=np.float32, copy=True),
         device=agent_dp.device,
         dtype=proprio.dtype,
+        requires_grad=True,
     )
 
-    def fn(z):
-        # z: (T, D) — add batch dim, drop it from output
-        return model.generate_actions_from_enc(
-            enc, domain_id, proprio, z[None], steps=steps
-        )[0]
+    actions = model.generate_actions_from_enc(
+        enc,
+        domain_id,
+        proprio,
+        noise_t[None],
+        steps=steps,
+        use_checkpoint=True,
+    )[0]  # (T, A)
 
-    # jacrev: reverse-mode AD (works with SDPA); same Frobenius reduction as OpenPI.
-    J = torch.func.jacrev(fn)(noise_t)  # (T_action, A, T_noise, D)
-    mat = torch.sqrt((J ** 2).sum(dim=(1, 3)))
+    T_a, A = actions.shape
+    T_z, _D = noise_t.shape
+    mat_sq = torch.zeros(T_a, T_z, device=agent_dp.device, dtype=torch.float32)
+
+    n_out = T_a * A
+    k = 0
+    for i in range(T_a):
+        for a_idx in range(A):
+            k += 1
+            grads = torch.autograd.grad(
+                actions[i, a_idx],
+                noise_t,
+                retain_graph=(k < n_out),
+                create_graph=False,
+            )[0]  # (T_z, D)
+            mat_sq[i] += grads.detach().float().pow(2).sum(dim=-1)
+            del grads
+        torch.cuda.empty_cache()
+
+    mat = torch.sqrt(mat_sq)
+    del actions, noise_t, mat_sq
+    torch.cuda.empty_cache()
     return jnp.asarray(mat.detach().cpu().numpy())
 
 
 def gradient_sensitivity_matrix_over_states(agent_dp, obs_procs, noises):
     """Average sensitivity matrices over N (state, noise) pairs."""
-    mats = [
-        gradient_sensitivity_matrix_xvla(agent_dp, obs_proc, noise)
-        for obs_proc, noise in zip(obs_procs, noises)
-    ]
+    mats = []
+    for i, (obs_proc, noise) in enumerate(zip(obs_procs, noises)):
+        mats.append(gradient_sensitivity_matrix_xvla(agent_dp, obs_proc, noise))
+        torch.cuda.empty_cache()
+        if (i + 1) % 5 == 0:
+            print(f"  sensitivity {i + 1}/{len(obs_procs)} states", flush=True)
     return jnp.mean(jnp.stack(mats, axis=0), axis=0)
 
 
@@ -96,7 +125,7 @@ def sensitivity_matrix_test(
     seed=0,
     filename="sensitivity_matrix_gradient_xvla",
 ):
-    """Compute XVLA action sensitivity to DSRL latent noise via torch.func.jacrev."""
+    """Compute XVLA action sensitivity to DSRL latent noise via sequential VJPs."""
 
     print("Loading policy...", flush=True)
     agent_dp = _load_xvla_policy(checkpoint)
