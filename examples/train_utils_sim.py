@@ -77,14 +77,28 @@ def _finalize_chunk_rewards(chunk_rewards, chunk_terminations, query_frequency):
 
 
 def _prepare_pi0_noise(actions_noise, agent, pi0_action_horizon):
-    """Reshape SAC noise and pad to pi0's inference horizon if needed."""
+    """Reshape SAC noise and expand/pad/truncate to pi0's inference horizon.
+
+    In multi-vector mode (noise_repeats_per_vector > 1) each of the N noise
+    vectors is tiled K times: (1, N, 32) -> (1, N*K, 32).  If N*K is still
+    shorter than pi0_action_horizon the last vector is padded; if longer the
+    sequence is truncated.
+    """
     actions_noise = np.reshape(actions_noise, agent.action_chunk_shape)
-    noise = actions_noise[None]
+    noise = actions_noise[None]  # (1, N, 32)
+
+    repeats = getattr(agent, 'noise_repeats_per_vector', 1)
+    if repeats > 1:
+        # Tile each vector K times along the horizon axis
+        noise = np.repeat(noise, repeats, axis=1)  # (1, N*K, 32)
+
     if noise.shape[1] < pi0_action_horizon:
-        noise_repeat = np.repeat(
+        pad = np.repeat(
             noise[:, -1:, :], pi0_action_horizon - noise.shape[1], axis=1
         )
-        noise = np.concatenate([noise, noise_repeat], axis=1)
+        noise = np.concatenate([noise, pad], axis=1)
+    elif noise.shape[1] > pi0_action_horizon:
+        noise = noise[:, :pi0_action_horizon, :]
     return noise
 
 

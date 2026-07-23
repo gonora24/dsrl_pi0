@@ -151,6 +151,8 @@ class PixelSACLearner(Agent):
                  marginalize_logprobs: bool = False,
                  use_actor_diff: bool = False,
                  freeze_residual_steps: int = 0,
+                 num_noise_vectors: int = 1,
+                 noise_repeats_per_vector: int = 1,
                  ):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1812.05905
@@ -163,14 +165,26 @@ class PixelSACLearner(Agent):
         self.use_transformer_actor = use_transformer_actor
         self.dsrl_action_dim = dsrl_action_dim
         self.pi0_action_horizon = pi0_action_horizon
-        if use_chunky_actor_critic:
+        if num_noise_vectors > 1:
+            # Multi-vector mode: actor predicts N independent 32-d noise vectors;
+            # each is tiled noise_repeats_per_vector times at rollout before VLA inference.
+            self.action_horizon = num_noise_vectors
+            self.action_chunk_shape = (num_noise_vectors, dsrl_action_dim)
+            self.action_dim = dsrl_action_dim * num_noise_vectors
+            self.noise_repeats_per_vector = noise_repeats_per_vector
+            _critic_is_chunky = True
+        elif use_chunky_actor_critic:
             self.action_horizon = pi0_action_horizon
             self.action_chunk_shape = (pi0_action_horizon, dsrl_action_dim)
             self.action_dim = dsrl_action_dim * pi0_action_horizon
+            self.noise_repeats_per_vector = 1
+            _critic_is_chunky = True
         else:
             self.action_horizon = 1
             self.action_chunk_shape = (1, dsrl_action_dim)
             self.action_dim = dsrl_action_dim
+            self.noise_repeats_per_vector = 1
+            _critic_is_chunky = False
 
         self.tau = tau
         self.discount = discount
@@ -290,7 +304,7 @@ class PixelSACLearner(Agent):
             critic_net = StateActionEnsemble(
                 critic_hidden_dims,
                 num_qs=num_qs,
-                use_chunky_actor_critic=use_chunky_actor_critic,
+                use_chunky_actor_critic=_critic_is_chunky,
             )
         critic_def = PixelMultiplexer(encoder=encoder_def,
                                       network=critic_net,

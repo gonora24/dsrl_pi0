@@ -34,6 +34,14 @@ if __name__ == '__main__':
              'Requires --chunk_reward 1.',
     )
     parser.add_argument('--use_chunky_actor_critic', default=0, help='use full (pi0_action_horizon x 32) noise for actor+critic; requires query_freq == pi0 horizon. If off, actor outputs 32-d noise repeated to pi0 length.', type=int)
+    parser.add_argument('--num_noise_vectors', default=1, type=int,
+        help='Number of independent noise vectors the actor predicts (N). '
+             'Total SAC action dim = N * dsrl_action_dim. '
+             'When N > 1, overrides use_chunky_actor_critic.')
+    parser.add_argument('--noise_repeats_per_vector', default=1, type=int,
+        help='Times each of the N vectors is repeated before being fed to the VLA (K). '
+             'Should satisfy N*K == pi0_action_horizon for an exact fit; '
+             'otherwise the last vector is padded or the sequence is truncated.')
     parser.add_argument('--use_transformer_critic', default=0, help='use transformer critic', type=int)
     parser.add_argument('--transformer_n_embd', default=256, help='transformer embedding dimension', type=int)
     parser.add_argument('--transformer_n_head', default=4, help='transformer number of heads', type=int)

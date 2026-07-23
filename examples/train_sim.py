@@ -174,7 +174,10 @@ class DummyEnv(gym.ObservationWrapper):
             obs_dict['state'] = Box(low=-1.0, high=1.0, shape=(state_dim, 1), dtype=np.float32)
         self.observation_space = Dict(obs_dict)
         noise_dim = int(getattr(variant, 'dsrl_action_dim', 32))
-        if variant.use_chunky_actor_critic and variant.algorithm == 'pixel_sac':
+        num_noise_vectors = int(getattr(variant, 'num_noise_vectors', 1))
+        if num_noise_vectors > 1 and variant.algorithm == 'pixel_sac':
+            action_shape = (num_noise_vectors, noise_dim)
+        elif variant.use_chunky_actor_critic and variant.algorithm == 'pixel_sac':
             action_shape = (variant.pi0_action_horizon, noise_dim)
         elif variant.algorithm == 'dsrl_na' and variant.env == 'libero' and not variant.chunk_reward:
             action_shape = (1, 7)
@@ -397,6 +400,8 @@ def main(variant):
             use_chunk_actor_transformer=variant.use_chunk_actor_transformer,
             use_actor_diff=variant.use_actor_diff,
             freeze_residual_steps=variant.freeze_residual_steps,
+            num_noise_vectors=getattr(variant, 'num_noise_vectors', 1),
+            noise_repeats_per_vector=getattr(variant, 'noise_repeats_per_vector', 1),
         **train_kwargs,
         )
 
