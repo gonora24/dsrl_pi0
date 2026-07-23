@@ -110,6 +110,59 @@ class XVLAPolicy:
         """Clear stateful proprio (call at each episode start)."""
         self._proprio = None
 
+    def encode_obs(self, obs: dict) -> dict:
+        """Pack obs, run Florence2/VLM once, return tensors for differentiable denoise.
+
+        Does **not** update stateful proprio (independent one-shot samples should
+        call ``reset()`` first). VLM features are detached under ``no_grad``.
+
+        Returns:
+            dict with keys:
+              - ``enc``: ``{vlm_features, aux_visual_inputs}`` (detached)
+              - ``proprio``: ``[B, 20]`` float tensor on device
+              - ``domain_id``: ``[B]`` long tensor on device
+        """
+        packed = self._pack_obs(obs)
+        B = packed["batch_size"]
+
+        images_batch = []
+        for i in range(B):
+            main = flip_agentview(packed["image0"][i])
+            wrist = packed["image1"][i]
+            images_batch.append(
+                [Image.fromarray(np.ascontiguousarray(main)), Image.fromarray(np.ascontiguousarray(wrist))]
+            )
+
+        prompts = packed["prompt"]
+        if isinstance(prompts, str):
+            language = [prompts] * B
+        else:
+            language = list(prompts)
+
+        inputs = self.processor(images_batch, language)
+        device = self.device
+        dtype = next(self.model.parameters()).dtype
+
+        def to_model(t: torch.Tensor) -> torch.Tensor:
+            if t.is_floating_point():
+                return t.to(device=device, dtype=dtype)
+            return t.to(device=device)
+
+        model_inputs = {k: to_model(v) for k, v in inputs.items()}
+        proprio_np = self._build_proprio(packed["robo_pos"], packed["robo_ori"], B)
+        proprio = to_model(torch.as_tensor(proprio_np))
+        domain_id = torch.full((B,), self.domain_id, dtype=torch.long, device=device)
+
+        with torch.no_grad():
+            enc = self.model.forward_vlm(
+                model_inputs["input_ids"],
+                model_inputs["image_input"],
+                model_inputs["image_mask"],
+            )
+            enc = {k: v.detach() for k, v in enc.items()}
+
+        return {"enc": enc, "proprio": proprio, "domain_id": domain_id}
+
     def infer(self, obs: dict, noise: Any = None, proprio_from_step: int | None = None) -> dict:
         """Run XVLA inference.
 
