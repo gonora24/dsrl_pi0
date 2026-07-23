@@ -35,7 +35,7 @@ from examples.xvla_policy import XVLAPolicy
 # ---------------------------------------------------------------------------
 
 LIBERO_ENV_RESOLUTION = 256
-XVLA_MAX_TIMESTEPS = 800
+XVLA_MAX_TIMESTEPS = 500
 
 LIBERO_SUITES = (
     "libero_spatial",
