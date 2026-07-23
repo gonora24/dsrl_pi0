@@ -1,6 +1,6 @@
 #!/bin/bash
 # Evaluate pretrained XVLA on all tasks in a LIBERO suite (10 rollouts per task by default).
-#
+#SBATCH --job-name=eval_xvla_libero_90
 # Usage:
 #   bash examples/scripts/run_eval_xvla_libero.sh libero_90
 

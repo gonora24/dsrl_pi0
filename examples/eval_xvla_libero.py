@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+#SBATCH --job-name=eval_xvla_libero_10
 """Evaluate pretrained XVLA on all tasks in a LIBERO suite."""
 
 import argparse
@@ -19,7 +20,7 @@ from examples.train_utils_sim import obs_to_xvla_input, prepare_libero_episode_f
 from examples.xvla_policy import XVLAPolicy
 
 LIBERO_ENV_RESOLUTION = 256
-XVLA_MAX_TIMESTEPS = 400
+XVLA_MAX_TIMESTEPS = 800
 
 LIBERO_SUITES = (
     "libero_spatial",
