@@ -18,7 +18,7 @@ from libero.libero.envs import OffScreenRenderEnv
 from openpi.policies import policy_config
 from openpi.training import config as openpi_config
 
-from examples.train_sim import CHECKPOINTS, _load_pi0_checkpoint
+from examples.train_sim import CHECKPOINTS, _load_pi0_checkpoint, load_norm_stats_for_checkpoint
 from examples.train_utils_sim import obs_to_pi_zero_input
 
 LIBERO_DUMMY_ACTION = [0.0] * 6 + [-1.0]
@@ -143,7 +143,10 @@ def evaluate_suite(args):
 
     openpi_train_config = _resolve_openpi_config(args.pi0_checkpoint)
     checkpoint_dir = _load_pi0_checkpoint(args.pi0_checkpoint)
-    policy = policy_config.create_trained_policy(openpi_train_config, checkpoint_dir)
+    norm_stats = load_norm_stats_for_checkpoint(args.pi0_checkpoint)
+    policy = policy_config.create_trained_policy(
+        openpi_train_config, checkpoint_dir, norm_stats=norm_stats
+    )
     print(f"Loaded policy from {checkpoint_dir}", flush=True)
     print(
         f"Evaluating {args.pi0_checkpoint} on {args.libero_suite} "
