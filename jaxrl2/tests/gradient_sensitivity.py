@@ -10,6 +10,12 @@ from openpi.models import model as _model
 from openpi.policies import policy_config
 
 from examples.train_utils_sim import obs_to_img, obs_to_pi_zero_input, obs_to_qpos
+from examples.train_sim import CHECKPOINTS, load_pi0_checkpoint, load_norm_stats_for_checkpoint
+from openpi.training import config as _openpi_config
+
+from jaxrl2.agents.pixel_sac.pixel_sac_learner import PixelSACLearner
+from jaxrl2.utils.general_utils import AttrDict
+from libero.libero import benchmark
 
 from libero.libero import get_libero_path
 from libero.libero.envs import OffScreenRenderEnv
@@ -23,14 +29,33 @@ def create_libero_env(task, resolution, seed):
     return env
 
 
-def _prepare_pi0_noise(actions_noise, pi0_action_horizon):
-    """Reshape SAC noise and pad to pi0's inference horizon if needed."""
-    noise = actions_noise[None] if actions_noise.shape[0] > 1 else actions_noise
+def _prepare_pi0_noise(actions_noise, pi0_action_horizon, action_dim=None):
+    """Reshape SAC noise and pad to the VLA inference horizon (and dim) if needed.
+
+    Args:
+        actions_noise      : (C, D) or (1, C, D)-like array
+        pi0_action_horizon : target T (pad by repeating last row)
+        action_dim         : if set, zero-pad / truncate the last axis to this D
+    """
+    noise = actions_noise[None] if actions_noise.ndim == 2 else actions_noise
     if noise.shape[1] < pi0_action_horizon:
         noise_repeat = np.repeat(
             noise[:, -1:, :], pi0_action_horizon - noise.shape[1], axis=1
         )
         noise = np.concatenate([noise, noise_repeat], axis=1)
+    elif noise.shape[1] > pi0_action_horizon:
+        noise = noise[:, :pi0_action_horizon, :]
+
+    if action_dim is not None:
+        D_cur = noise.shape[2]
+        if D_cur < action_dim:
+            pad = np.zeros(
+                (noise.shape[0], noise.shape[1], action_dim - D_cur),
+                dtype=np.asarray(noise).dtype,
+            )
+            noise = np.concatenate([noise, pad], axis=-1)
+        elif D_cur > action_dim:
+            noise = noise[:, :, :action_dim]
     return noise
 
 
@@ -40,13 +65,6 @@ def _preprocess_obs(agent_dp, obs_pi_zero):
     Runs the policy's input transform and wraps into _model.Observation so the
     result can be passed directly to agent_dp._sample_actions.  This is done
     once per state, entirely outside the jax.jacfwd-traced path.
-
-    Args:
-        agent_dp    : Policy object (JAX, non-pytorch)
-        obs_pi_zero : raw observation dict as returned by obs_to_pi_zero_input
-
-    Returns:
-        obs_proc : _model.Observation with a batch dimension of 1
     """
     inputs = agent_dp._input_transform(jax.tree.map(lambda x: x, obs_pi_zero))
     inputs = jax.tree.map(lambda x: jnp.asarray(x)[jnp.newaxis, ...], inputs)
@@ -58,18 +76,6 @@ def gradient_sensitivity_matrix(agent_dp, obs_proc, noise_pi0):
 
     Entry [i, j] = ||∂a_i / ∂z_j||_F  (Frobenius norm over action dim A and
     latent dim D of the (A, D) Jacobian block).
-
-    Args:
-        agent_dp  : Policy object — must be the JAX (non-pytorch) variant so
-                    that _sample_actions is jax.jit-wrapped and traceable.
-        obs_proc  : preprocessed _model.Observation (batch size 1), produced by
-                    _preprocess_obs.  Treated as a static context; not
-                    differentiated.
-        noise_pi0 : (T, D) float array — the already-prepared pi0 latent noise
-                    (output of _prepare_pi0_noise with the batch dim removed).
-
-    Returns:
-        mat : (T_action, T_noise) sensitivity matrix
     """
     def fn(z):
         # z: (T, D) — add batch dim for _sample_actions, remove it from output
@@ -79,25 +85,12 @@ def gradient_sensitivity_matrix(agent_dp, obs_proc, noise_pi0):
     return jnp.sqrt(jnp.sum(J ** 2, axis=(1, 3)))  # (T_action, T_noise)
 
 
-def gradient_sensitivity_matrix_over_states(
-    agent_dp,
-    obs_procs,      # list of N preprocessed _model.Observation objects
-    noises_pi0,     # list of N (T, D) noise arrays
-):
-    """Compute the sensitivity matrix averaged over N (state, noise) pairs.
-
-    Args:
-        agent_dp   : Policy object
-        obs_procs  : list of N _model.Observation objects (from _preprocess_obs)
-        noises_pi0 : list of N (T, D) arrays (from _prepare_pi0_noise)
-
-    Returns:
-        mean_mat : (T_action, T_noise) sensitivity matrix averaged over N
-    """
-    mats = []
-    for obs_proc, noise_pi0 in zip(obs_procs, noises_pi0):
-        mat = gradient_sensitivity_matrix(agent_dp, obs_proc, noise_pi0)
-        mats.append(mat)
+def gradient_sensitivity_matrix_over_states(agent_dp, obs_procs, noises_pi0):
+    """Compute the sensitivity matrix averaged over N (state, noise) pairs."""
+    mats = [
+        gradient_sensitivity_matrix(agent_dp, obs_proc, noise_pi0)
+        for obs_proc, noise_pi0 in zip(obs_procs, noises_pi0)
+    ]
     return jnp.mean(jnp.stack(mats, axis=0), axis=0)  # (T_action, T_noise)
 
 
@@ -157,10 +150,10 @@ def plot_sensitivity_matrix(
     return fig, ax
 
 
-def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100,
+def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100, checkpoint="pi05_libero",
                              seed=0, filename="sensitivity_matrix_gradient"):
-    """Compute the pi0 action sensitivity to DSRL latent noise via exact
-    Jacobians (jax.jacfwd), averaged over N sampled environment states.
+    """Compute OpenPI action sensitivity to DSRL latent noise via jax.jacfwd,
+    averaged over N sampled environment states.
 
     For each sampled state:
       1. Run the restored DSRL actor on the observation to obtain a (C, D)
@@ -170,32 +163,22 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100,
       4. Call jax.jacfwd through _sample_actions to get the exact Jacobian and
          compute the (T, C) sensitivity matrix.
       5. Average the resulting matrices over all N states.
-
-    Args:
-        noise_actor_dir : path to a ``checkpointXXX`` directory produced by
-                          PixelSACLearner.save_checkpoint, or None for random noise
-        libero_suite    : LIBERO benchmark suite name, e.g. ``libero_90``
-        task_id         : integer task index within the suite, or None for all tasks
-        N               : number of states to sample
-        seed            : base PRNG seed
-        filename        : output PNG filename (without extension)
     """
-    from jaxrl2.agents.pixel_sac.pixel_sac_learner import PixelSACLearner
-    from jaxrl2.utils.general_utils import AttrDict
-    from libero.libero import benchmark
 
     def load_noise_actor(ckpt_dir):
         return PixelSACLearner.restore_from_checkpoint_dir(ckpt_dir)
 
-    def policy_load(pi0_ckpt="pi05_libero"):
-        from examples.train_sim import CHECKPOINTS, _load_pi0_checkpoint
-        from openpi.training import config as _openpi_config
-        ckpt_dir = _load_pi0_checkpoint(pi0_ckpt)
+    def policy_load(pi0_ckpt):
+        ckpt_dir = load_pi0_checkpoint(pi0_ckpt)
         cfg = _openpi_config.get_config(CHECKPOINTS[pi0_ckpt]["config"])
-        return policy_config.create_trained_policy(cfg, ckpt_dir)
+        norm_stats = load_norm_stats_for_checkpoint(pi0_ckpt)
+        print(f"Loading openpi policy from {ckpt_dir}", flush=True)
+        return policy_config.create_trained_policy(cfg, ckpt_dir, norm_stats=norm_stats)
 
-    print("Loading pi05 policy...", flush=True)
-    agent_dp = policy_load()
+    print("Loading policy...", flush=True)
+    agent_dp = policy_load(checkpoint)
+    action_horizon = agent_dp.action_horizon
+
     if noise_actor_dir is not None:
         print("Restoring DSRL noise actor...", flush=True)
         agent = load_noise_actor(noise_actor_dir)
@@ -203,9 +186,8 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100,
     else:
         C, D = (10, 32)
     print(f"C, D: {C, D}")
-    pi05_horizon = agent_dp.action_horizon    # 10
+    print(f"action_horizon: {action_horizon}", flush=True)
 
-    # Set up LIBERO environment and variant descriptor
     benchmark_dict = benchmark.get_benchmark_dict()
     task_suite = benchmark_dict[libero_suite]()
 
@@ -238,7 +220,7 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100,
     env = create_libero_env(task_for_env, 256, seed)
 
     def _collect_obs(sample_idx):
-        """Reset env to one sampled state and return obs dicts."""
+        """Reset env to one sampled state and return (obs_dict, obs_pi_zero)."""
         task_i, init_state_i = state_pool[sample_idx % len(state_pool)]
         variant.task_description = task_i.language
         env.reset()
@@ -258,13 +240,16 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100,
             noise_cd = agent.sample_actions(obs_dict, marginalize_logprobs=False, use_actor_diff=False)
             if agent.action_chunk_shape[0] == 1:
                 noise_repeat = np.repeat(
-                    noise_cd[-1:, :], pi05_horizon - noise_cd.shape[0], axis=0
+                    noise_cd[-1:, :], action_horizon - noise_cd.shape[0], axis=0
                 )
                 noise_cd = np.concatenate([noise_cd, noise_repeat], axis=0)
             else:
                 noise_cd = noise_cd[0]
         else:
-            noise_cd = jax.random.normal(jax.random.PRNGKey(seed + i), (C, D))
+            noise_cd = np.asarray(
+                jax.random.normal(jax.random.PRNGKey(seed + i), (C, D)),
+                dtype=np.float32,
+            )
         return noise_cd  # (T, D)
 
     # Single-state sanity check
@@ -273,7 +258,7 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100,
     print(f"noise_cd_0 shape: {noise_cd_0.shape}")
 
     obs_proc_0 = _preprocess_obs(agent_dp, obs_pi_zero_0)
-    noise_pi0_0 = _prepare_pi0_noise(noise_cd_0, pi05_horizon)[0]  # (T, D) — drop batch dim
+    noise_pi0_0 = _prepare_pi0_noise(noise_cd_0, action_horizon)[0]
 
     print("Computing single-state gradient sensitivity matrix...", flush=True)
     mat_0 = gradient_sensitivity_matrix(agent_dp, obs_proc_0, noise_pi0_0)
@@ -282,14 +267,14 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100,
 
     # Average over N sampled states
     print(f"\nComputing gradient sensitivity matrix over {N} states...", flush=True)
-    obs_procs_list  = []
+    obs_procs_list = []
     noises_pi0_list = []
 
     for i in range(N):
         obs_dict_i, obs_pi_zero_i = _collect_obs(i)
         noise_cd_i = _get_noise_cd(obs_dict_i, i)
         obs_procs_list.append(_preprocess_obs(agent_dp, obs_pi_zero_i))
-        noises_pi0_list.append(_prepare_pi0_noise(noise_cd_i, pi05_horizon)[0])
+        noises_pi0_list.append(_prepare_pi0_noise(noise_cd_i, action_horizon)[0])
         if (i + 1) % 10 == 0:
             print(f"  collected {i + 1}/{N} states", flush=True)
 
@@ -302,11 +287,11 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100,
     fig, ax = plot_sensitivity_matrix(
         mean_mat,
         title=(
-            f"Avg. gradient sensitivity ({N} states, {libero_suite} all_tasks)"
+            f"Avg. gradient sensitivity for openpi {checkpoint} ({N} states, {libero_suite} all_tasks)"
             if task_id is None
-            else f"Avg. gradient sensitivity ({N} states, {libero_suite} task {task_id})"
+            else f"Avg. gradient sensitivity for openpi {checkpoint} ({N} states, {libero_suite} task {task_id})"
         ),
-        action_label=f"pi05 action timestep  i  (of {pi05_horizon})",
+        action_label=f"action timestep  i  (of {action_horizon})",
         latent_label=f"DSRL latent timestep  j  (of {C})",
     )
     out_path = f"plots/plots/sensitivity_matrices/{filename}.png"
@@ -328,6 +313,8 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--filename", type=str, default="sensitivity_matrix_gradient",
                         help="Filename to save the sensitivity matrix (default: sensitivity_matrix_gradient)")
+    parser.add_argument("--checkpoint", type=str, default="pi05_base",
+                        help="Pi0 checkpoint to use (default: pi05_base)")
     args = parser.parse_args()
     sensitivity_matrix_test(
         noise_actor_dir=args.noise_actor_dir,
@@ -336,4 +323,5 @@ if __name__ == "__main__":
         N=args.N,
         seed=args.seed,
         filename=args.filename,
+        checkpoint=args.checkpoint,
     )
