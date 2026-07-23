@@ -13,7 +13,14 @@ import tensorflow as tf
 
 from openpi.policies.libero_policy import make_libero_example
 from openpi.policies.policy_config import create_trained_policy
-from examples.train_sim import CHECKPOINTS, load_pi0_checkpoint, create_exp_name, get_libero_env, openpi_config
+from examples.train_sim import (
+    CHECKPOINTS,
+    create_exp_name,
+    get_libero_env,
+    load_norm_stats_for_checkpoint,
+    load_pi0_checkpoint,
+    openpi_config,
+)
 
 from examples.train_utils_sim import obs_to_img, obs_to_pi_zero_input, obs_to_qpos
 from libero.libero import benchmark
@@ -62,7 +69,8 @@ def collect_trajectories(variant):
     openpi_train_config = openpi_config.get_config(openpi_config_name)
     variant.pi0_action_horizon = openpi_train_config.model.action_horizon
     checkpoint_dir = load_pi0_checkpoint(variant.pi0_ckpt)
-    agent_dp = create_trained_policy(openpi_train_config, checkpoint_dir)
+    norm_stats = load_norm_stats_for_checkpoint(variant.pi0_ckpt)
+    agent_dp = create_trained_policy(openpi_train_config, checkpoint_dir, norm_stats=norm_stats)
     print(f"Loaded pi0 policy from {checkpoint_dir}", flush=True)
 
     # Run one JAX inference pass before MuJoCo EGL init. Mixing EGL rendering and the

@@ -34,11 +34,15 @@ import tensorflow as tf
 from jax.experimental.compilation_cache import compilation_cache
 
 from openpi.training import config as openpi_config
+from openpi.training import checkpoints as openpi_checkpoints
 from openpi.policies import policy_config
 from openpi.shared import download
 
 home_dir = os.environ['HOME']
 compilation_cache.initialize_cache(os.path.join(home_dir, 'jax_compilation_cache'))
+
+# Default OpenPI Libero asset id used inside fine-tuned checkpoints (e.g. pi05_libero).
+LIBERO_NORM_STATS_ASSET_ID = "physical-intelligence/libero"
 
 CHECKPOINTS = {
     "openpi": {
@@ -48,6 +52,13 @@ CHECKPOINTS = {
     "pi05_libero": {
         "config": "pi05_libero",
         "source": "gs://openpi-assets/checkpoints/pi05_libero/",
+    },
+    "pi05_base": {
+        "config": "pi05_libero",
+        "source": "gs://openpi-assets/checkpoints/pi05_base",
+        # Base checkpoint has no Libero norm_stats; reuse those from the Libero fine-tune.
+        "norm_stats_source": "gs://openpi-assets/checkpoints/pi05_libero",
+        "norm_stats_asset_id": LIBERO_NORM_STATS_ASSET_ID,
     },
     "rlinf_hf_long": {
         "config": "pi0_libero",
@@ -94,6 +105,26 @@ def load_pi0_checkpoint(pi0_ckpt: str) -> pathlib.Path:
     transformers_rlinf_patch.purge_transformers_imports()
     os.environ.setdefault("OPENPI_DISABLE_TORCH_COMPILE", "1")
     return checkpoint_dir
+
+
+def load_norm_stats_for_checkpoint(pi0_ckpt: str):
+    """Load override norm_stats when a CHECKPOINTS entry sets ``norm_stats_source``.
+
+    Returns None so ``create_trained_policy`` falls back to the checkpoint's own assets.
+    """
+    if pi0_ckpt not in CHECKPOINTS:
+        return None
+    spec = CHECKPOINTS[pi0_ckpt]
+    source = spec.get("norm_stats_source")
+    if not source:
+        return None
+    asset_id = spec.get("norm_stats_asset_id", LIBERO_NORM_STATS_ASSET_ID)
+    assets_root = pathlib.Path(download.maybe_download(source)) / "assets"
+    return openpi_checkpoints.load_norm_stats(assets_root, asset_id)
+
+
+# Alias used by some eval scripts.
+_load_pi0_checkpoint = load_pi0_checkpoint
 
 
 def get_libero_env(task, resolution, seed):
@@ -265,11 +296,15 @@ def main(variant):
     if variant.vla == 'openpi':
         if variant.env == 'libero' or variant.env == 'metaworld':
             checkpoint_dir = load_pi0_checkpoint(pi0_ckpt)
+            norm_stats = load_norm_stats_for_checkpoint(pi0_ckpt)
         elif variant.env == 'aloha_cube':
             checkpoint_dir = download.maybe_download("s3://openpi-assets/checkpoints/pi0_aloha_sim")
+            norm_stats = None
         else:
             raise NotImplementedError()
-        agent_dp = policy_config.create_trained_policy(openpi_train_config, checkpoint_dir)
+        agent_dp = policy_config.create_trained_policy(
+            openpi_train_config, checkpoint_dir, norm_stats=norm_stats
+        )
         variant.pi0_action_horizon = openpi_train_config.model.action_horizon
         variant.dsrl_action_dim = 32
         print(f"Loaded pi0 policy from {checkpoint_dir}", flush=True)
