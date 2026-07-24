@@ -84,7 +84,8 @@ def _prepare_pi0_noise(actions_noise, agent, pi0_action_horizon):
     shorter than pi0_action_horizon the last vector is padded; if longer the
     sequence is truncated.
     """
-    actions_noise = np.reshape(actions_noise, agent.action_chunk_shape)
+    if not agent.only_predict_dims_until > 0:
+        actions_noise = np.reshape(actions_noise, agent.action_chunk_shape)
     noise = actions_noise[None]  # (1, N, 32)
 
     repeats = getattr(agent, 'noise_repeats_per_vector', 1)
@@ -613,23 +614,36 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
             rng, key = jax.random.split(rng)
             obs_policy = obs_to_policy_input(obs, variant, env=env)
             if i == 0:
-                noise = jax.random.normal(key, (1, *agent.action_chunk_shape))
+                noise = jax.random.normal(rng, (1, variant.pi0_action_horizon, variant.dsrl_action_dim))
                 if noise.shape[1] < variant.pi0_action_horizon:
                     noise_repeat = jax.numpy.repeat(
                         noise[:, -1:, :], variant.pi0_action_horizon - noise.shape[1], axis=1
                     )
                     noise = jax.numpy.concatenate([noise, noise_repeat], axis=1)
-                actions_noise = noise[0, :agent.action_chunk_shape[0], :]
+                if agent.only_predict_dims_until > 0:
+                    actions_noise = noise[0, :agent.action_chunk_shape[0], :variant.only_predict_dims_until]
+                else:
+                    actions_noise = noise[0, :agent.action_chunk_shape[0], :]
             else:
                 actions_noise = agent.sample_actions(obs_dict, marginalize_logprobs=variant.marginalize_logprobs,
                                                      use_actor_diff=getattr(variant, 'use_actor_diff', False))
-                noise = _prepare_pi0_noise(actions_noise, agent, variant.pi0_action_horizon)
+                if agent.only_predict_dims_until > 0:
+                    noise = jax.random.normal(key, (1, *agent.action_chunk_shape))
+                    actions_noise_complete = noise[0, :len(actions_noise), :]
+                    print(f'actions_noise: {actions_noise_complete.shape}')
+                else:
+                    actions_noise_complete = actions_noise
+                noise = _prepare_pi0_noise(actions_noise_complete, agent, variant.pi0_action_horizon)
+                print(f'noise: {noise.shape}')
             
             infer_kwargs = {}
             if getattr(variant, 'vla', 'openpi') == 'xvla':
                 infer_kwargs['proprio_from_step'] = query_frequency - 1
             actions = agent_dp.infer(obs_policy, noise=noise, **infer_kwargs)["actions"]
-            action_list.append(np.reshape(actions_noise, agent.action_chunk_shape))
+            if not agent.only_predict_dims_until > 0:
+                action_list.append(np.reshape(actions_noise, agent.action_chunk_shape))
+            else:
+                action_list.append(actions_noise)
             obs_list.append(obs_dict)
      
         action_t = actions[t % query_frequency]
@@ -986,10 +1000,14 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
                 
                 if i == 0:
                     # for initial evaluation, we sample from standard gaussian noise to evaluate the base policy's performance
-                    noise = jax.random.normal(rng, (1, variant.pi0_action_horizon, agent.dsrl_action_dim))
+                    noise = jax.random.normal(rng, (1, variant.pi0_action_horizon, variant.dsrl_action_dim))
                 else:
                     actions_noise = agent.sample_actions(obs_dict, marginalize_logprobs=variant.marginalize_logprobs,
                                                          use_actor_diff=getattr(variant, 'use_actor_diff', False))
+                    if agent.only_predict_dims_until > 0:
+                        noise = jax.random.normal(key, (1, *agent.action_chunk_shape))
+                        actions_noise = noise[0, :len(actions_noise), :]
+
                     noise = _prepare_pi0_noise(actions_noise, agent, variant.pi0_action_horizon)
 
                 infer_kwargs = {}

@@ -85,7 +85,7 @@ if __name__ == '__main__':
              '0 = use full SAC batch_size (current behavior).',
     )
     parser.add_argument('--vla', default='openpi', help='vla type', type=str)
-    
+    parser.add_argument('--only_predict_dims_until', default=-1, help='only predict dimensions until this dimension', type=int)
     train_args_dict = dict(
         actor_lr=1e-4,
         critic_lr= 3e-4,

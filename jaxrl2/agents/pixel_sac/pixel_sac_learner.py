@@ -153,6 +153,7 @@ class PixelSACLearner(Agent):
                  freeze_residual_steps: int = 0,
                  num_noise_vectors: int = 1,
                  noise_repeats_per_vector: int = 1,
+                 only_predict_dims_until: int = -1,
                  ):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1812.05905
@@ -179,6 +180,12 @@ class PixelSACLearner(Agent):
             self.action_dim = dsrl_action_dim * pi0_action_horizon
             self.noise_repeats_per_vector = 1
             _critic_is_chunky = True
+        elif only_predict_dims_until > 0:
+            self.action_horizon = 1
+            self.action_chunk_shape = (1, only_predict_dims_until)
+            self.action_dim = only_predict_dims_until
+            self.noise_repeats_per_vector = 1
+            _critic_is_chunky = False
         else:
             self.action_horizon = 1
             self.action_chunk_shape = (1, dsrl_action_dim)
@@ -193,7 +200,7 @@ class PixelSACLearner(Agent):
         self.marginalize_logprobs = marginalize_logprobs
         self.use_actor_diff = use_actor_diff
         self.freeze_residual_steps = freeze_residual_steps
-        
+        self.only_predict_dims_until = only_predict_dims_until
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key, temp_key = jax.random.split(rng, 4)
 
@@ -252,7 +259,7 @@ class PixelSACLearner(Agent):
                 low=-action_magnitude,
                 high=action_magnitude,
                 action_horizon=self.action_horizon,
-                dsrl_action_dim=dsrl_action_dim,
+                dsrl_action_dim=self.action_dim,
                 use_transformer=use_chunk_actor_transformer,
                 actor_transformer_n_heads=actor_transformer_n_heads,
                 actor_transformer_n_layers=actor_transformer_n_layers,

@@ -2,7 +2,7 @@
 #SBATCH --ntasks=1
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1 
-#SBATCH --job-name=dsrl_pi05_libero_90_task59_baseline
+#SBATCH --job-name=dsrl_pi05_libero_90_task18_baseline
 
 module load devel/miniforge
 conda deactivate
@@ -13,7 +13,7 @@ export WANDB_USERNAME='noragorhan'
 export WANDB_TEAM='noragorhan-karlsruhe-institute-of-technology'
 proj_name=DSRL_pi0_Libero
 device_id=0
-wandb_mode=online  # online or offline
+wandb_mode=offline  # online or offline
 export WANDB_MODE=${wandb_mode}
 
 export OUTPUT_DIR=/pfs/work9/workspace/scratch/ka_eu3660-rlinf_tmp/DSRL_pi0_Libero
@@ -39,18 +39,19 @@ python3 examples/launch_train_sim.py \
 --algorithm pixel_sac \
 --env libero \
 --prefix dsrl_pi05_libero_90_task59 \
---suffix baseline \
+--suffix baseline_only7dims \
 --wandb_project ${proj_name} \
 --batch_size 256 \
+--vla openpi \
 --discount 0.999 \
 --seed 0 \
 --max_steps 1000000  \
 --eval_interval 10000 \
 --checkpoint_interval 200000 \
---log_interval 500 \
---eval_episodes 10 \
+--log_interval 5 \
+--eval_episodes 1 \
 --multi_grad_step 20 \
---start_online_updates 500 \
+--start_online_updates 5 \
 --resize_image 64 \
 --action_magnitude 1.0 \
 --query_freq 5 \
@@ -60,5 +61,7 @@ python3 examples/launch_train_sim.py \
 --pi0_checkpoint pi05_libero \
 --chunk_reward 0 \
 --use_chunky_actor_critic 0 \
+--num_qs 10 \
+--only_predict_dims_until 7
 
 ## batch size 256, multi grad step 20, hidden dims 50

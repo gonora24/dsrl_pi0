@@ -337,6 +337,8 @@ def main(variant):
     else:
         raise NotImplementedError()
 
+    if variant.only_predict_dims_until > 0:
+        variant.dsrl_action_dim = variant.only_predict_dims_until
     dummy_env = DummyEnv(variant)
     sample_obs = add_batch_dim(dummy_env.observation_space.sample())
     sample_action = add_batch_dim(dummy_env.action_space.sample())
@@ -402,13 +404,15 @@ def main(variant):
             freeze_residual_steps=variant.freeze_residual_steps,
             num_noise_vectors=getattr(variant, 'num_noise_vectors', 1),
             noise_repeats_per_vector=getattr(variant, 'noise_repeats_per_vector', 1),
+            only_predict_dims_until=variant.only_predict_dims_until,
         **train_kwargs,
         )
 
     if getattr(variant, 'restore_path', None) is not None:
         agent.restore_checkpoint(variant.restore_path)
 
-
+    if variant.only_predict_dims_until > 0:
+        variant.dsrl_action_dim = agent_dp.action_dim
     ## Replay Buffer
     # print_full_config(variant, agent=agent, extra=config_extra)
     if variant.chunk_reward and not variant.algorithm == 'dsrl_na':
