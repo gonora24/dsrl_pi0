@@ -83,10 +83,26 @@ def _prepare_pi0_noise(actions_noise, agent, pi0_action_horizon):
     vectors is tiled K times: (1, N, 32) -> (1, N*K, 32).  If N*K is still
     shorter than pi0_action_horizon the last vector is padded; if longer the
     sequence is truncated.
+
+    When interpolate_noise_vectors is True the N vectors are instead treated as
+    anchor points placed at evenly-spaced positions in [0, H-1] and piecewise
+    linear interpolation fills the remaining H steps.  The result is always
+    exactly (1, H, 32) so no padding or truncation is needed.
     """
     if not agent.only_predict_dims_until > 0:
         actions_noise = np.reshape(actions_noise, agent.action_chunk_shape)
     noise = actions_noise[None]  # (1, N, 32)
+
+    if getattr(agent, 'interpolate_noise_vectors', False) and noise.shape[1] > 1:
+        N = noise.shape[1]
+        anchor_pos = np.linspace(0, pi0_action_horizon - 1, N)
+        query_pos = np.arange(pi0_action_horizon, dtype=float)
+        interp_noise = np.stack(
+            [np.interp(query_pos, anchor_pos, noise[0, :, d])
+             for d in range(noise.shape[2])],
+            axis=-1,
+        )  # (H, 32)
+        return interp_noise[None]  # (1, H, 32)
 
     repeats = getattr(agent, 'noise_repeats_per_vector', 1)
     if repeats > 1:

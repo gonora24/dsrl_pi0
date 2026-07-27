@@ -42,6 +42,10 @@ if __name__ == '__main__':
         help='Times each of the N vectors is repeated before being fed to the VLA (K). '
              'Should satisfy N*K == pi0_action_horizon for an exact fit; '
              'otherwise the last vector is padded or the sequence is truncated.')
+    parser.add_argument('--interpolate_noise_vectors', default=0, type=int,
+        help='If 1, place the N noise vectors as evenly-spaced anchors across the '
+             'horizon and fill intermediate steps with piecewise linear interpolation '
+             'instead of hard-tiling each vector K times.')
     parser.add_argument('--use_transformer_critic', default=0, help='use transformer critic', type=int)
     parser.add_argument('--transformer_n_embd', default=256, help='transformer embedding dimension', type=int)
     parser.add_argument('--transformer_n_head', default=4, help='transformer number of heads', type=int)
@@ -63,7 +67,7 @@ if __name__ == '__main__':
     parser.add_argument('--use_actor_diff', default=0, help='use autoregressive difference predictor', type=int)
     parser.add_argument('--freeze_residual_steps', default=0, type=int,
                         help='freeze residual head gradients for first N steps (requires use_actor_diff)')
-    parser.add_argument('--num_qs', default=10, help='number of Q-heads', type=int)
+    parser.add_argument('--num_qs', default=2, help='number of Q-heads', type=int)
     parser.add_argument('--critic_hidden_dims', default=[128, 128, 128], help='critic hidden dimensions', nargs="+", type=int)
     parser.add_argument('--hidden_dims', default=[128, 128, 128], help='actor hidden dimensions', nargs="+", type=int)
     parser.add_argument('--trajectory_hdf5_path', default=None, help='path to trajectory hdf5 file', type=str)

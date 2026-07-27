@@ -153,6 +153,7 @@ class PixelSACLearner(Agent):
                  freeze_residual_steps: int = 0,
                  num_noise_vectors: int = 1,
                  noise_repeats_per_vector: int = 1,
+                 interpolate_noise_vectors: bool = False,
                  only_predict_dims_until: int = -1,
                  ):
         """
@@ -200,6 +201,7 @@ class PixelSACLearner(Agent):
         self.marginalize_logprobs = marginalize_logprobs
         self.use_actor_diff = use_actor_diff
         self.freeze_residual_steps = freeze_residual_steps
+        self.interpolate_noise_vectors = interpolate_noise_vectors
         self.only_predict_dims_until = only_predict_dims_until
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key, temp_key = jax.random.split(rng, 4)
@@ -259,7 +261,7 @@ class PixelSACLearner(Agent):
                 low=-action_magnitude,
                 high=action_magnitude,
                 action_horizon=self.action_horizon,
-                dsrl_action_dim=self.action_dim,
+                dsrl_action_dim=self.dsrl_action_dim,
                 use_transformer=use_chunk_actor_transformer,
                 actor_transformer_n_heads=actor_transformer_n_heads,
                 actor_transformer_n_layers=actor_transformer_n_layers,

@@ -53,6 +53,10 @@ CHECKPOINTS = {
         "config": "pi05_libero",
         "source": "gs://openpi-assets/checkpoints/pi05_libero/",
     },
+    "pi05_droid": {
+        "config": "pi05_droid",
+        "source": "gs://openpi-assets/checkpoints/pi05_droid/",
+    },
     "pi05_base": {
         "config": "pi05_libero",
         "source": "gs://openpi-assets/checkpoints/pi05_base",
@@ -349,8 +353,8 @@ def main(variant):
     train_kwargs = dict(variant['train_kwargs'])
     if train_kwargs.pop('cosine_decay', False):
         train_kwargs['decay_steps'] = variant.max_steps
-    if variant.use_transformer_critic:
-        train_kwargs['num_qs'] = 4
+    # if variant.use_transformer_critic:
+    #     train_kwargs['num_qs'] = 4
     if variant.use_actor_diff:
         train_kwargs['target_entropy'] = -16.0
     if variant.algorithm == 'dsrl_na':
@@ -404,6 +408,7 @@ def main(variant):
             freeze_residual_steps=variant.freeze_residual_steps,
             num_noise_vectors=getattr(variant, 'num_noise_vectors', 1),
             noise_repeats_per_vector=getattr(variant, 'noise_repeats_per_vector', 1),
+            interpolate_noise_vectors=bool(getattr(variant, 'interpolate_noise_vectors', 0)),
             only_predict_dims_until=variant.only_predict_dims_until,
         **train_kwargs,
         )
