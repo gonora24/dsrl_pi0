@@ -10,6 +10,9 @@ from openpi.policies import policy_config
 
 from examples.train_utils_sim import obs_to_img, obs_to_pi_zero_input, obs_to_qpos
 
+from examples.train_sim import CHECKPOINTS, load_pi0_checkpoint, load_norm_stats_for_checkpoint
+from openpi.training import config as openpi_config
+
 from libero.libero import get_libero_path
 from libero.libero.envs import OffScreenRenderEnv
 
@@ -244,7 +247,7 @@ def plot_sensitivity_matrix(
 
 
 def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100,
-                            num_directions=20, eps=1e-3, seed=0, filename="sensitivity_matrix"):
+                            num_directions=20, eps=1e-3, seed=0, filename="sensitivity_matrix", pi0_checkpoint="pi05_libero"):
     """
     Compute the pi0 action sensitivity to DSRL latent noise, averaged over N
     sampled environment states.
@@ -275,15 +278,14 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100,
         """Restore a PixelSACLearner using the companion config JSON."""
         return PixelSACLearner.restore_from_checkpoint_dir(ckpt_dir)
 
-    def policy_load(pi0_ckpt="pi05_libero"):
-        from examples.train_sim import CHECKPOINTS, _load_pi0_checkpoint
-        from openpi.training import config as _openpi_config
-        ckpt_dir = _load_pi0_checkpoint(pi0_ckpt)
-        cfg = _openpi_config.get_config(CHECKPOINTS[pi0_ckpt]["config"])
-        return policy_config.create_trained_policy(cfg, ckpt_dir)
+    def policy_load(pi0_ckpt):
+        ckpt_dir = load_pi0_checkpoint(pi0_ckpt)
+        norm_stats = load_norm_stats_for_checkpoint(pi0_ckpt)
+        cfg = openpi_config.get_config(CHECKPOINTS[pi0_ckpt]["config"])
+        return policy_config.create_trained_policy(cfg, ckpt_dir, norm_stats=norm_stats)
 
     print("Loading pi05 policy...", flush=True)
-    agent_dp = policy_load()
+    agent_dp = policy_load(pi0_checkpoint)
     if noise_actor_dir is not None:
         print("Restoring DSRL noise actor...", flush=True)
         agent = load_noise_actor(noise_actor_dir)
@@ -442,6 +444,8 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--filename", type=str, default="sensitivity_matrix",
                         help="Filename to save the sensitivity matrix (default: sensitivity_matrix)")
+    parser.add_argument("--pi0_checkpoint", type=str, default="pi05_libero",
+                        help="Checkpoint name for pi05 policy (default: pi05_libero)")
     args = parser.parse_args()
     sensitivity_matrix_test(
         noise_actor_dir=args.noise_actor_dir,
@@ -452,4 +456,5 @@ if __name__ == "__main__":
         eps=args.eps,
         seed=args.seed,
         filename=args.filename,
+        pi0_checkpoint=args.pi0_checkpoint,
     )

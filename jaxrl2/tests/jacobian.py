@@ -94,7 +94,7 @@ def compute_jacobian_block_over_states(
     ]
     return jnp.mean(jnp.stack(blocks, axis=0), axis=0)  # (A, D)
 
-
+    
 # ---------------------------------------------------------------------------
 # Plotting
 # ---------------------------------------------------------------------------
@@ -204,6 +204,9 @@ def jacobian_test(
     noise_idx=0,
     filename="jacobian",
     num_actions=None,
+    run_over_trajectory=False,
+    query_frequency=5,
+    max_timesteps=400,
 ):
     """Compute and plot the Jacobian block ∂a_{action_idx} / ∂z_{noise_idx}.
 
@@ -225,7 +228,9 @@ def jacobian_test(
         filename        : output filename stem
         num_actions     : if set, crop the plot to only the first num_actions
                           action-dim rows (use 7 for LIBERO to hide zero-padding)
-
+        run_over_trajectory : if True, run over a trajectory instead of N states
+        query_frequency   : how often to query the policy (default 5)
+        max_timesteps     : maximum number of timesteps to run over (default 400)
     Returns:
         mean_J_block : (A, D) averaged Jacobian block (full, before any crop)
     """
@@ -333,14 +338,36 @@ def jacobian_test(
     print(f"Collecting {N} state(s)...", flush=True)
     obs_procs_list = []
     noises_pi0_list = []
+    if not run_over_trajectory:
+        for i in range(N):
+            obs_dict_i, obs_pi_zero_i = _collect_obs(i)
+            noise_cd_i                = _get_noise(obs_dict_i, i)
+            obs_procs_list.append(_preprocess_obs(agent_dp, obs_pi_zero_i))
+            noises_pi0_list.append(_prepare_pi0_noise(noise_cd_i, action_horizon)[0])
+            if (i + 1) % 10 == 0:
+                print(f"  collected {i + 1}/{N}", flush=True)
+    else:
+        obs = env.reset()
+        for t in range(max_timesteps):
+            curr_image = obs_to_img(obs, variant)
+            qpos = obs_to_qpos(obs, variant)
+            obs_dict = {
+                "pixels": curr_image[np.newaxis, ..., np.newaxis],
+                "state":  qpos[np.newaxis, ..., np.newaxis],
+            }
+            if t % query_frequency == 0:
+                obs_pi_zero = obs_to_pi_zero_input(obs, variant)
+                obs_proc = _preprocess_obs(agent_dp, obs_pi_zero)
+                noise_cd = _get_noise(obs_dict, t)
+                noise_pi0 = _prepare_pi0_noise(noise_cd, action_horizon)[0]
+                actions = agent_dp.infer(obs_pi_zero, noise=noise_pi0[None])["actions"]
+                obs_procs_list.append(obs_proc)
+                noises_pi0_list.append(noise_pi0)
 
-    for i in range(N):
-        obs_dict_i, obs_pi_zero_i = _collect_obs(i)
-        noise_cd_i                = _get_noise(obs_dict_i, i)
-        obs_procs_list.append(_preprocess_obs(agent_dp, obs_pi_zero_i))
-        noises_pi0_list.append(_prepare_pi0_noise(noise_cd_i, action_horizon)[0])
-        if (i + 1) % 10 == 0:
-            print(f"  collected {i + 1}/{N}", flush=True)
+            action_t = actions[t % query_frequency]
+            obs, reward, done, info = env.step(action_t)
+            if done:
+                break
 
     # Std of noise
     noise = np.array(noises_pi0_list)   # (N, 10, 32)
@@ -459,6 +486,18 @@ if __name__ == "__main__":
             "The full (uncropped) array is still saved as .npy. (default: no crop)"
         ),
     )
+    parser.add_argument(
+        "--run_over_trajectory", type=int, default=0,
+        help="If 1, run over a trajectory instead of N states (default: 0)",
+    )
+    parser.add_argument(
+        "--query_frequency", type=int, default=5,
+        help="How often to query the policy (default: 5)",
+    )
+    parser.add_argument(
+        "--max_timesteps", type=int, default=400,
+        help="Maximum number of timesteps to run over (default: 400)",
+    )
     args = parser.parse_args()
 
     jacobian_test(
@@ -472,4 +511,7 @@ if __name__ == "__main__":
         noise_idx=args.noise_idx,
         filename=args.filename,
         num_actions=args.num_actions,
+        run_over_trajectory=args.run_over_trajectory,
+        query_frequency=args.query_frequency,
+        max_timesteps=args.max_timesteps,
     )
