@@ -47,6 +47,14 @@ if __name__ == '__main__':
         help='If 1, place the N noise vectors as evenly-spaced anchors across the '
              'horizon and fill intermediate steps with piecewise linear interpolation '
              'instead of hard-tiling each vector K times.')
+    parser.add_argument('--use_frozen_baseline_residual', default=0, type=int,
+        help='If 1, use a frozen warm-started 32-d MLP as anchor and a trainable residual '
+             'MLP that adds corrections for residual_n_vectors extra copies.')
+    parser.add_argument('--residual_n_vectors', default=1, type=int,
+        help='Number of residual copies K. Total action dim = (1+K)*32. '
+             'The frozen vector is tiled K times and the residual is added on top.')
+    parser.add_argument('--residual_hidden_dims', default=None, nargs='+', type=int,
+        help='Hidden dims for the residual MLP. Defaults to hidden_dims if not set.')
     parser.add_argument('--use_transformer_critic', default=0, help='use transformer critic', type=int)
     parser.add_argument('--transformer_n_embd', default=256, help='transformer embedding dimension', type=int)
     parser.add_argument('--transformer_n_head', default=4, help='transformer number of heads', type=int)

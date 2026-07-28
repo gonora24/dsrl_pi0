@@ -410,6 +410,9 @@ def main(variant):
             noise_repeats_per_vector=getattr(variant, 'noise_repeats_per_vector', 1),
             interpolate_noise_vectors=bool(getattr(variant, 'interpolate_noise_vectors', 0)),
             only_predict_dims_until=variant.only_predict_dims_until,
+            use_frozen_baseline_residual=bool(getattr(variant, 'use_frozen_baseline_residual', 0)),
+            residual_n_vectors=getattr(variant, 'residual_n_vectors', 1),
+            residual_hidden_dims=tuple(variant.residual_hidden_dims) if getattr(variant, 'residual_hidden_dims', None) else (),
         **train_kwargs,
         )
 
@@ -417,9 +420,12 @@ def main(variant):
         agent.restore_checkpoint(variant.restore_path)
 
     if getattr(variant, 'initialize_weights_from', None) is not None:
+        # In frozen-residual mode the frozen head is always 32-dim (n_vectors=1);
+        # in multi-vector mode pass the full N so the output heads are tiled.
+        _warm_n = 1 if getattr(variant, 'use_frozen_baseline_residual', 0) else getattr(variant, 'num_noise_vectors', 1)
         agent.warm_start_from_baseline(
             variant.initialize_weights_from,
-            n_vectors=getattr(variant, 'num_noise_vectors', 1),
+            n_vectors=_warm_n,
         )
 
     if variant.only_predict_dims_until > 0:

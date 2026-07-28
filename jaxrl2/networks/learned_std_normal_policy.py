@@ -1,5 +1,7 @@
 from typing import Optional, Sequence, Tuple
 
+import jax
+
 import distrax
 import flax.linen as nn
 import jax.numpy as jnp
@@ -168,6 +170,9 @@ class LearnedStdTanhNormalPolicy(nn.Module):
     actor_transformer_n_layers: int = 3
     actor_transformer_weight_norm: bool = False
     marginalize_logprobs: bool = False
+    use_frozen_baseline_residual: bool = False
+    residual_n_vectors: int = 1
+    residual_hidden_dims: Sequence[int] = ()
 
     @nn.compact
     def __call__(self,
@@ -185,6 +190,37 @@ class LearnedStdTanhNormalPolicy(nn.Module):
                 log_std_min=self.log_std_min,
                 log_std_max=self.log_std_max,
             )(observations, training=training)
+        elif self.use_frozen_baseline_residual:
+            # Frozen backbone: always predicts a single dsrl_action_dim (32-d) vector,
+            # identical in shape to the baseline checkpoint — direct copy, no tiling needed.
+            outputs = MLP(self.hidden_dims,
+                          activate_final=True,
+                          dropout_rate=self.dropout_rate)(observations, training=training)
+            frozen_means    = nn.Dense(self.dsrl_action_dim, kernel_init=default_init(1e-2))(outputs)
+            frozen_log_stds = nn.Dense(self.dsrl_action_dim, kernel_init=default_init(1e-2))(outputs)
+            frozen_log_stds = jnp.clip(frozen_log_stds, self.log_std_min, self.log_std_max)
+
+            # Cut all gradients back through the frozen backbone.
+            frozen_means_sg    = jax.lax.stop_gradient(frozen_means)
+            frozen_log_stds_sg = jax.lax.stop_gradient(frozen_log_stds)
+
+            # Tile frozen vector K times as the anchor for residual copies.
+            K = self.residual_n_vectors
+            tiled_means    = jnp.tile(frozen_means_sg,    (1, K))  # (B, K*32)
+            tiled_log_stds = jnp.tile(frozen_log_stds_sg, (1, K))
+
+            # Residual backbone: separately trainable, predicts K*32-dim correction.
+            res_dims = self.residual_hidden_dims if self.residual_hidden_dims else self.hidden_dims
+            res_out  = MLP(res_dims, activate_final=True,
+                           dropout_rate=self.dropout_rate)(observations, training=training)
+            res_dim  = K * self.dsrl_action_dim
+            res_means    = nn.Dense(res_dim, kernel_init=default_init(1e-4))(res_out)
+            res_log_stds = nn.Dense(res_dim, kernel_init=default_init(1e-4))(res_out)
+            res_log_stds = jnp.clip(res_log_stds, self.log_std_min, self.log_std_max)
+
+            # Output: [v_frozen | tile(v_frozen, K) + residual]  shape (B, (1+K)*32)
+            means    = jnp.concatenate([frozen_means_sg,    tiled_means    + res_means],    axis=-1)
+            log_stds = jnp.concatenate([frozen_log_stds_sg, tiled_log_stds + res_log_stds], axis=-1)
         else:
             outputs = MLP(self.hidden_dims,
                           activate_final=True,

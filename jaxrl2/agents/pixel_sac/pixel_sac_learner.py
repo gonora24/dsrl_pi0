@@ -155,6 +155,9 @@ class PixelSACLearner(Agent):
                  noise_repeats_per_vector: int = 1,
                  interpolate_noise_vectors: bool = False,
                  only_predict_dims_until: int = -1,
+                 use_frozen_baseline_residual: bool = False,
+                 residual_n_vectors: int = 1,
+                 residual_hidden_dims: Sequence[int] = (),
                  ):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1812.05905
@@ -167,7 +170,15 @@ class PixelSACLearner(Agent):
         self.use_transformer_actor = use_transformer_actor
         self.dsrl_action_dim = dsrl_action_dim
         self.pi0_action_horizon = pi0_action_horizon
-        if num_noise_vectors > 1:
+        if use_frozen_baseline_residual:
+            # Frozen-baseline residual mode: frozen MLP predicts 1 x 32-d vector;
+            # residual MLP adds corrections for residual_n_vectors extra copies.
+            self.action_horizon = 1 + residual_n_vectors
+            self.action_chunk_shape = (1 + residual_n_vectors, dsrl_action_dim)
+            self.action_dim = dsrl_action_dim * (1 + residual_n_vectors)
+            self.noise_repeats_per_vector = noise_repeats_per_vector
+            _critic_is_chunky = True
+        elif num_noise_vectors > 1:
             # Multi-vector mode: actor predicts N independent 32-d noise vectors;
             # each is tiled noise_repeats_per_vector times at rollout before VLA inference.
             self.action_horizon = num_noise_vectors
@@ -203,6 +214,8 @@ class PixelSACLearner(Agent):
         self.freeze_residual_steps = freeze_residual_steps
         self.interpolate_noise_vectors = interpolate_noise_vectors
         self.only_predict_dims_until = only_predict_dims_until
+        self.use_frozen_baseline_residual = use_frozen_baseline_residual
+        self.residual_n_vectors = residual_n_vectors
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key, temp_key = jax.random.split(rng, 4)
 
@@ -267,6 +280,9 @@ class PixelSACLearner(Agent):
                 actor_transformer_n_layers=actor_transformer_n_layers,
                 actor_transformer_weight_norm=transformer_weight_norm,
                 marginalize_logprobs=marginalize_logprobs,
+                use_frozen_baseline_residual=use_frozen_baseline_residual,
+                residual_n_vectors=residual_n_vectors,
+                residual_hidden_dims=tuple(residual_hidden_dims) if residual_hidden_dims else tuple(hidden_dims),
             )
 
         actor_def = PixelMultiplexer(encoder=encoder_def,
