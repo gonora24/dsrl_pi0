@@ -629,7 +629,7 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
             # we then use the noise to sample the action from diffusion model
             rng, key = jax.random.split(rng)
             obs_policy = obs_to_policy_input(obs, variant, env=env)
-            if i == 0:
+            if i == 0 and variant.initialize_weights_from is None:
                 noise = jax.random.normal(rng, (1, variant.pi0_action_horizon, variant.dsrl_action_dim))
                 if noise.shape[1] < variant.pi0_action_horizon:
                     noise_repeat = jax.numpy.repeat(
@@ -1012,7 +1012,7 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
                 obs_policy = obs_to_policy_input(obs, variant, env=env)
                 
                 
-                if i == 0:
+                if i == 0 and variant.initialize_weights_from is None:
                     # for initial evaluation, we sample from standard gaussian noise to evaluate the base policy's performance
                     noise = jax.random.normal(rng, (1, variant.pi0_action_horizon, variant.dsrl_action_dim))
                 else:

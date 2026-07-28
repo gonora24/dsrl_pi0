@@ -482,6 +482,47 @@ class PixelSACLearner(Agent):
         self._temp = output_dict['temp']
         print('restored from ', dir)
 
+    def warm_start_from_baseline(self, baseline_ckpt_path: str, n_vectors: int):
+        """Copy a 32-d baseline actor into this N×32 multi-vector actor.
+
+        All parameter leaves with matching shapes are copied directly.
+        The two output-head Dense layers (means, log_stds) are tiled N times
+        along their output dimension so the policy starts as N identical copies
+        of the baseline, equivalent to baseline behaviour before training diverges them.
+        """
+        from flax.traverse_util import flatten_dict, unflatten_dict
+
+        assert pathlib.Path(baseline_ckpt_path).exists(), \
+            f"Baseline checkpoint {baseline_ckpt_path} does not exist."
+
+        baseline_raw = checkpoints.restore_checkpoint(baseline_ckpt_path, target=None)
+        flat_baseline = flatten_dict(baseline_raw['actor']['params'])
+        flat_mv = flatten_dict(self._actor.params)
+
+        new_flat = {}
+        tiled_keys = []
+        for key, mv_val in flat_mv.items():
+            if key not in flat_baseline:
+                new_flat[key] = mv_val
+                continue
+            src = jnp.array(flat_baseline[key])
+            if src.shape == mv_val.shape:
+                new_flat[key] = src
+            elif src.ndim == 2:
+                new_flat[key] = jnp.tile(src, (1, n_vectors))
+                tiled_keys.append(('.'.join(key), src.shape, new_flat[key].shape))
+            elif src.ndim == 1:
+                new_flat[key] = jnp.tile(src, n_vectors)
+                tiled_keys.append(('.'.join(key), src.shape, new_flat[key].shape))
+            else:
+                new_flat[key] = mv_val
+
+        new_params = unflatten_dict(new_flat)
+        self._actor = self._actor.replace(params=new_params)
+        print(f'warm-started multi-vector actor (N={n_vectors}) from {baseline_ckpt_path}')
+        for name, old_shape, new_shape in tiled_keys:
+            print(f'  tiled: {name}  {old_shape} -> {new_shape}')
+
     @classmethod
     def restore_from_checkpoint_dir(cls, ckpt_dir: str, seed: int = 0) -> 'PixelSACLearner':
         """Reconstruct a PixelSACLearner from a checkpoint directory.

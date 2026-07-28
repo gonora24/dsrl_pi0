@@ -15,6 +15,7 @@ if __name__ == '__main__':
     parser.add_argument('--eval_interval', default=5000, help='Eval interval.', type=int)
     parser.add_argument('--checkpoint_interval', default=-1, help='checkpoint interval.', type=int)
     parser.add_argument('--restore_path', default=None, help='Path to checkpoint to restore from.', type=str)
+    parser.add_argument('--initialize_weights_from', default=None, help='Baseline checkpoint path for warm-starting multi-vector actor.', type=str)
     parser.add_argument('--batch_size', default=16, help='Mini batch size.', type=int)
     parser.add_argument('--max_steps', default=int(1e6), help='Number of training steps.', type=int)
     parser.add_argument('--add_states', default=1, help='whether to add low-dim states to the obervations', type=int)

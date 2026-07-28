@@ -416,6 +416,12 @@ def main(variant):
     if getattr(variant, 'restore_path', None) is not None:
         agent.restore_checkpoint(variant.restore_path)
 
+    if getattr(variant, 'initialize_weights_from', None) is not None:
+        agent.warm_start_from_baseline(
+            variant.initialize_weights_from,
+            n_vectors=getattr(variant, 'num_noise_vectors', 1),
+        )
+
     if variant.only_predict_dims_until > 0:
         variant.dsrl_action_dim = agent_dp.action_dim
     ## Replay Buffer
