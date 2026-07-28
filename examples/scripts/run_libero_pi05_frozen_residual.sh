@@ -83,3 +83,4 @@ python3 examples/launch_train_sim.py \
 --num_noise_vectors 2 \
 --noise_repeats_per_vector 5 \
 --marginalize_logprobs 0 \
+--num_qs 10 \
