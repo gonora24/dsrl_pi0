@@ -45,18 +45,18 @@ pip install "transformers==4.53.2" --quiet
 # Experiment parameters (override via env vars as needed)
 # ---------------------------------------------------------------------------
 NUM_ROLLOUTS="${NUM_ROLLOUTS:-50}"
-TASK_ID="${TASK_ID:-18}"              # 18 = KITCHEN_SCENE3_put_the_frying_pan_on_the_stove
+TASK_ID="${TASK_ID:-64}"              # 18 = KITCHEN_SCENE3_put_the_frying_pan_on_the_stove
 LIBERO_SUITE="${LIBERO_SUITE:-libero_90}"
 PI0_CHECKPOINT="rlinf_hf_pi05"
 QUERY_FREQ="${QUERY_FREQ:-5}"
 SEED="${SEED:-0}"
 
-# Part 2: how many degrees to rotate the pan handle around Z
-PAN_ROTATION_DEG="${PAN_ROTATION_DEG:-90.0}"
+# Part 2: how many degrees to rotate the pan handle around Z, also book for task 77
+PAN_ROTATION_DEG="25.0"
 
-# Part 3: how far to shift the stove (target) in metres
-TARGET_OFFSET_X="${TARGET_OFFSET_X:-0.15}"
-TARGET_OFFSET_Y="${TARGET_OFFSET_Y:-0.0}"
+# Part 3: how far to shift the stove (target) in metres, or desk caddy for task 77
+TARGET_OFFSET_X="0.0"
+TARGET_OFFSET_Y="0.10"
 
 # Which parts to run (space-separated, e.g. "1 2 3")
 PARTS="${PARTS:-1 2 3}"

@@ -87,11 +87,20 @@ def _apply_pan_rotation(env, rotation_deg):
         if "chefmate_8_frypan" in name:
             pan_joint_id = j
             break
+        if "black_book_1" in name:
+            pan_joint_id = j
+            break
+        if "red_coffee_mug_1" in name:
+            pan_joint_id = j
+            break
+        if "akita_black_bowl_1" in name:
+            pan_joint_id = j
+            break
 
     if pan_joint_id is None:
         raise RuntimeError(
-            "Could not locate a joint containing 'chefmate_8_frypan' in the sim model. "
-            "Check that task_id points to a frying-pan task."
+            "Could not locate a joint containing 'chefmate_8_frypan' or 'black_book_1' in the sim model. "
+            "Check that task_id points to a frying-pan or black book task."
         )
 
     qadr = int(sim.model.jnt_qposadr[pan_joint_id])
@@ -123,11 +132,14 @@ def _apply_target_shift(env, offset_x, offset_y):
         if "flat_stove_1" in name:
             stove_body_id = b
             break
+        if "desk_caddy_1" in name:
+            stove_body_id = b
+            break
 
     if stove_body_id is None:
         raise RuntimeError(
-            "Could not locate body 'flat_stove_1' in the sim model. "
-            "Check that task_id points to a task with a flat stove."
+            "Could not locate body 'flat_stove_1' or 'desk_caddy_1' in the sim model. "
+            "Check that task_id points to a task with a flat stove or desk caddy."
         )
 
     sim.model.body_pos[stove_body_id][0] += offset_x
