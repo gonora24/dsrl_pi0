@@ -65,8 +65,8 @@ pip uninstall -y $(pip list --format=freeze | grep '^nvidia-' | cut -d= -f1)
 # reinstall jax
 pip install "jax[cuda12]==0.5.0"
 
-# install metaworld
-pip install metaworld
+# to handle conflicting CUDA versions
+unset LD_LIBRARY_PATH
 ```
 
 ## Training (Simulation)
