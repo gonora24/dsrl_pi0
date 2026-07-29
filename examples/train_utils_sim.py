@@ -644,17 +644,20 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
                 actions_noise = agent.sample_actions(obs_dict, marginalize_logprobs=variant.marginalize_logprobs,
                                                      use_actor_diff=getattr(variant, 'use_actor_diff', False))
                 if agent.only_predict_dims_until > 0:
+                    # Build full (1, H, 32) noise and embed the actor's 7-dim prediction
+                    # into dims 0:only_predict_dims_until across all timesteps of the horizon.
                     noise = jax.random.normal(key, (1, variant.pi0_action_horizon, variant.dsrl_action_dim))
-                    actions_noise_complete = noise[0, :len(actions_noise), :]
+                    actions_noise_complete = noise.at[0, :, :agent.only_predict_dims_until].set(actions_noise[0])
+                    # noise is already (1, H, 32) — pass directly to agent_dp.infer
                 else:
                     actions_noise_complete = actions_noise
-                noise = _prepare_pi0_noise(actions_noise_complete, agent, variant.pi0_action_horizon)
+                    noise = _prepare_pi0_noise(actions_noise_complete, agent, variant.pi0_action_horizon)
             
             infer_kwargs = {}
             if getattr(variant, 'vla', 'openpi') == 'xvla':
                 infer_kwargs['proprio_from_step'] = query_frequency - 1
             actions = agent_dp.infer(obs_policy, noise=noise, **infer_kwargs)["actions"]
-            if not agent.only_predict_dims_until > 0:
+            if agent.only_predict_dims_until == 0:
                 action_list.append(np.reshape(actions_noise, agent.action_chunk_shape))
             else:
                 action_list.append(actions_noise)
@@ -1019,10 +1022,13 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
                     actions_noise = agent.sample_actions(obs_dict, marginalize_logprobs=variant.marginalize_logprobs,
                                                          use_actor_diff=getattr(variant, 'use_actor_diff', False))
                     if agent.only_predict_dims_until > 0:
+                        # Build full (1, H, 32) noise and embed the actor's 7-dim prediction
+                        # into dims 0:only_predict_dims_until across all timesteps of the horizon.
                         noise = jax.random.normal(key, (1, variant.pi0_action_horizon, variant.dsrl_action_dim))
-                        actions_noise = noise[0, :len(actions_noise), :]
-
-                    noise = _prepare_pi0_noise(actions_noise, agent, variant.pi0_action_horizon)
+                        noise = noise.at[0, :, :agent.only_predict_dims_until].set(actions_noise[0])
+                        # noise is already (1, H, 32) — pass directly to agent_dp.infer
+                    else:
+                        noise = _prepare_pi0_noise(actions_noise, agent, variant.pi0_action_horizon)
 
                 infer_kwargs = {}
                 if getattr(variant, 'vla', 'openpi') == 'xvla':
