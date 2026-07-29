@@ -177,7 +177,7 @@ class PixelSACLearner(Agent):
             self.action_chunk_shape = (1 + residual_n_vectors, dsrl_action_dim)
             self.action_dim = dsrl_action_dim * (1 + residual_n_vectors)
             self.noise_repeats_per_vector = noise_repeats_per_vector
-            _critic_is_chunky = True
+            _critic_is_chunky = False
         elif num_noise_vectors > 1:
             # Multi-vector mode: actor predicts N independent 32-d noise vectors;
             # each is tiled noise_repeats_per_vector times at rollout before VLA inference.
@@ -498,13 +498,19 @@ class PixelSACLearner(Agent):
         self._temp = output_dict['temp']
         print('restored from ', dir)
 
-    def warm_start_from_baseline(self, baseline_ckpt_path: str, n_vectors: int):
+    def warm_start_from_baseline(self, baseline_ckpt_path: str, n_vectors: int,
+                                   warm_start_critic: bool = False):
         """Copy a 32-d baseline actor into this N×32 multi-vector actor.
 
         All parameter leaves with matching shapes are copied directly.
         The two output-head Dense layers (means, log_stds) are tiled N times
         along their output dimension so the policy starts as N identical copies
         of the baseline, equivalent to baseline behaviour before training diverges them.
+
+        When warm_start_critic=True (frozen-residual mode), the critic and
+        target critic are also copied directly from the baseline checkpoint.
+        The critic architecture is identical (32-dim action input) so no
+        tiling or reshaping is needed.
         """
         from flax.traverse_util import flatten_dict, unflatten_dict
 
@@ -538,6 +544,13 @@ class PixelSACLearner(Agent):
         print(f'warm-started multi-vector actor (N={n_vectors}) from {baseline_ckpt_path}')
         for name, old_shape, new_shape in tiled_keys:
             print(f'  tiled: {name}  {old_shape} -> {new_shape}')
+
+        if warm_start_critic:
+            self._critic = self._critic.replace(
+                params=jax.tree_util.tree_map(jnp.array, baseline_raw['critic']['params']))
+            self._target_critic_params = jax.tree_util.tree_map(
+                jnp.array, baseline_raw['target_critic_params'])
+            print(f'warm-started critic from {baseline_ckpt_path}')
 
     @classmethod
     def restore_from_checkpoint_dir(cls, ckpt_dir: str, seed: int = 0) -> 'PixelSACLearner':

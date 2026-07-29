@@ -23,7 +23,9 @@ default_kernel_init = nn.initializers.lecun_normal()
 
 def _prepare_critic_actions(actions: jnp.ndarray, use_chunky_actor_critic: bool) -> jnp.ndarray:
     if actions.ndim == 3 and not use_chunky_actor_critic:
-        return actions[:, 0, :]
+        # Take the last vector: for frozen-residual mode this is v_frozen + v_residual;
+        # for a single-vector baseline actions.ndim==2 so this branch is never reached.
+        return actions[:, -1, :]
     return actions
 
 
