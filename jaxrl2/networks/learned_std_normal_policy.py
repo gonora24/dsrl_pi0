@@ -193,9 +193,12 @@ class LearnedStdTanhNormalPolicy(nn.Module):
         elif self.use_frozen_baseline_residual:
             # Frozen backbone: always predicts a single dsrl_action_dim (32-d) vector,
             # identical in shape to the baseline checkpoint — direct copy, no tiling needed.
+            # Stop encoder gradients on the frozen path so the bottleneck features seen by
+            # the frozen MLP cannot drift as the residual path updates the encoder.
+            frozen_obs = jax.lax.stop_gradient(observations)
             outputs = MLP(self.hidden_dims,
                           activate_final=True,
-                          dropout_rate=self.dropout_rate)(observations, training=training)
+                          dropout_rate=self.dropout_rate)(frozen_obs, training=training)
             frozen_means    = nn.Dense(self.dsrl_action_dim, kernel_init=default_init(1e-2))(outputs)
             frozen_log_stds = nn.Dense(self.dsrl_action_dim, kernel_init=default_init(1e-2))(outputs)
             frozen_log_stds = jnp.clip(frozen_log_stds, self.log_std_min, self.log_std_max)
