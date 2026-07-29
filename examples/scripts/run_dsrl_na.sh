@@ -2,22 +2,24 @@
 #SBATCH --ntasks=1
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1 
-#SBATCH --job-name=dsrl_na_single
+#SBATCH --job-name=dsrl_na_singleactorcritic_offline
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-cd "${REPO_ROOT}"
-
+module load devel/miniforge 2>/dev/null || true
+conda deactivate 2>/dev/null || true
+conda activate dsrl_pi0
 device_id=0
+
+export PYTHONPATH="${PYTHONPATH}:/pfs/data6/home/ka/ka_anthropomatik/ka_eu3660/projects/dsrl_pi0/"
+export PYTHONPATH=$PYTHONPATH:/pfs/data6/home/ka/ka_anthropomatik/ka_eu3660/projects/dsrl_pi0/LIBERO
+
 proj_name=DSRL_NA_Libero
-wandb_mode=offline   # online or offline
+wandb_mode=online   # online or offline
 export WANDB_API_KEY='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'
 export WANDB_EMAIL='noragorhan@gmail.com'
 export WANDB_USERNAME='noragorhan'
 export WANDB_TEAM='noragorhan-karlsruhe-institute-of-technology'
 export WANDB_MODE=${wandb_mode}
-export OUTPUT_DIR="/home/i53/student/gorhan/Masterarbeit/dsrl_pi0/logs"
-export PYTHONPATH="${PYTHONPATH}:${REPO_ROOT}:${REPO_ROOT}/LIBERO"
+export OUTPUT_DIR="/pfs/work9/workspace/scratch/ka_eu3660-rlinf_tmp/DSRL_NA_Libero"
 
 export DISPLAY=:0
 export MUJOCO_GL=egl
@@ -34,22 +36,21 @@ pip install "transformers==4.53.2"
 
 python3 examples/launch_train_sim.py \
 --algorithm dsrl_na \
---trajectory_hdf5_path logs/collect_pi05_libero_90_task_2026_07_09_17_26_54_0000--s-0/trajectories.hdf5 \
+--trajectory_hdf5_path /pfs/work9/workspace/scratch/ka_eu3660-rlinf_tmp/DSRL_NA_trajectories/pi05_libero90_task59/trajectories.hdf5 \
 --env libero \
 --prefix dsrl_na_libero_90_task59 \
---suffix singleactorcritic_offline_100steps \
+--suffix singleactorcritic_offline \
 --wandb_project ${proj_name} \
---batch_size 128 \
+--batch_size 256 \
 --discount 0.999 \
 --backup_entropy 1 \
 --seed 0 \
 --max_steps 1000000 \
---num_offline_steps 10000000 \
+--num_offline_steps 1000000 \
 --eval_interval 10000 \
---checkpoint_interval -1 \
---restore_path "/home/i53/student/gorhan/Masterarbeit/dsrl_pi0/logs/dsrl_na_libero_90_task59_2026_07_16_10_15_51_0000--s-0_singleactorcritic_offline_100steps/checkpoint2" \
+--checkpoint_interval 100000 \
 --log_interval 500 \
---eval_episodes 1 \
+--eval_episodes 10 \
 --multi_grad_step 20 \
 --start_online_updates 500 \
 --resize_image 64 \
@@ -60,7 +61,7 @@ python3 examples/launch_train_sim.py \
 --libero_suite "libero_90" \
 --libero_task_id 59 \
 --pi0_checkpoint pi05_libero \
---pi0_microbatch_size 4 \
+--pi0_microbatch_size 0 \
 --chunk_reward 1 \
 --use_chunky_actor_critic 0 \
 --critic_hidden_dims 128 128 128 \
