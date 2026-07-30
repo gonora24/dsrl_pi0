@@ -7,13 +7,19 @@ import optax
 from flax.training.train_state import TrainState
 
 from examples.train_utils_sim import obs_to_policy_input
-from jaxrl2.data.dataset import DatasetDict, _sample
+from jaxrl2.data.dataset import DatasetDict
 from jaxrl2.types import Params, PRNGKey
+
+# Cached once at first use so every microbatch call avoids re-querying JAX.
+_PI0_DEVICE = None
 
 
 def _pi0_device():
-    gpus = jax.devices('gpu')
-    return gpus[0] if gpus else jax.local_devices()[0]
+    global _PI0_DEVICE
+    if _PI0_DEVICE is None:
+        gpus = jax.devices('gpu')
+        _PI0_DEVICE = gpus[0] if gpus else jax.local_devices()[0]
+    return _PI0_DEVICE
 
 
 def _put_on_device(x, device):
@@ -25,10 +31,39 @@ def _put_on_device(x, device):
     return jax.device_put(jnp.asarray(arr), device)
 
 
-def _infer_pi0_actions_single(agent_dp: Any, obs, noise, variant) -> np.ndarray:
-    """Run a single policy inference call with inputs on the same device as the jitted model."""
+def _slice_policy_input(obs_policy: dict, indx: np.ndarray) -> dict:
+    """Slice a preprocessed policy input dict along the batch axis.
+
+    String values (e.g. the language prompt) are kept as-is; all other values
+    are indexed with *indx*.
+    """
+    return {
+        k: v if isinstance(v, (str, bytes)) else v[indx]
+        for k, v in obs_policy.items()
+    }
+
+
+def _pad_policy_input(obs_policy: dict, pad: int) -> dict:
+    """Append *pad* zero rows to every array in a preprocessed policy input dict."""
+    result = {}
+    for k, v in obs_policy.items():
+        if isinstance(v, (str, bytes)):
+            result[k] = v
+        else:
+            result[k] = np.concatenate(
+                [v, np.zeros((pad, *v.shape[1:]), dtype=v.dtype)], axis=0
+            )
+    return result
+
+
+def _infer_pi0_actions_single(agent_dp: Any, obs_policy: dict, noise, variant) -> np.ndarray:
+    """Run a single policy inference call with inputs already preprocessed.
+
+    Expects *obs_policy* to be the output of ``obs_to_policy_input``; this
+    function only handles device placement and the actual ``agent_dp.infer``
+    call so that preprocessing is not repeated for every microbatch chunk.
+    """
     device = _pi0_device()
-    obs_policy = obs_to_policy_input(obs, variant)
     # XVLAPolicy expects numpy host tensors; OpenPI JAX Policy wants device arrays.
     if getattr(variant, 'vla', 'openpi') == 'xvla':
         return np.asarray(agent_dp.infer(obs_policy, noise=noise)['actions'], dtype=np.float32)
@@ -45,18 +80,43 @@ def _infer_pi0_actions_single(agent_dp: Any, obs, noise, variant) -> np.ndarray:
 def _infer_pi0_actions(
         agent_dp: Any, obs, noise, variant, microbatch_size: int = 0,
 ) -> np.ndarray:
-    """Run pi0 inference, optionally splitting the batch into smaller chunks."""
+    """Run pi0 inference, optionally splitting the batch into smaller chunks.
+
+    Observations are preprocessed (image resize etc.) once for the full batch
+    before the microbatch loop so that expensive per-image CPU work is not
+    repeated per chunk.  The last chunk is zero-padded to *microbatch_size* so
+    that JAX always sees a fixed compiled shape and avoids recompilation.
+    """
+    obs_policy = obs_to_policy_input(obs, variant)
     batch_size = int(noise.shape[0])
     if microbatch_size <= 0 or microbatch_size >= batch_size:
-        return _infer_pi0_actions_single(agent_dp, obs, noise, variant)
+        return _infer_pi0_actions_single(agent_dp, obs_policy, noise, variant)
 
     chunks = []
     for start in range(0, batch_size, microbatch_size):
         end = min(start + microbatch_size, batch_size)
+        chunk_len = end - start
         indx = np.arange(start, end)
-        obs_chunk = _sample(obs, indx)
+        obs_chunk = _slice_policy_input(obs_policy, indx)
         noise_chunk = noise[start:end]
-        chunks.append(_infer_pi0_actions_single(agent_dp, obs_chunk, noise_chunk, variant))
+
+        # Pad the last (potentially shorter) chunk to microbatch_size so JAX
+        # always compiles for a single fixed shape.
+        if chunk_len < microbatch_size:
+            pad = microbatch_size - chunk_len
+            obs_chunk = _pad_policy_input(obs_chunk, pad)
+            noise_chunk = np.concatenate(
+                [noise_chunk, np.zeros((pad, *noise_chunk.shape[1:]), dtype=noise_chunk.dtype)],
+                axis=0,
+            )
+
+        result = _infer_pi0_actions_single(agent_dp, obs_chunk, noise_chunk, variant)
+
+        # Discard padded rows from the output.
+        if chunk_len < microbatch_size:
+            result = result[:chunk_len]
+
+        chunks.append(result)
     return np.concatenate(chunks, axis=0)
 
 
