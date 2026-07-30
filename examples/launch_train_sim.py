@@ -21,6 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('--add_states', default=1, help='whether to add low-dim states to the obervations', type=int)
     parser.add_argument('--wandb_project', default='cql_sim_online', help='wandb project')
     parser.add_argument('--start_online_updates', default=1000, help='number of steps to collect before starting online updates', type=int)
+    parser.add_argument('--online_buffer_size', default=-1, help='number of steps to collect before starting online updates', type=int)
     parser.add_argument('--algorithm', default='pixel_sac', help='type of algorithm')
     parser.add_argument('--prefix', default='', help='prefix to use for wandb')
     parser.add_argument('--suffix', default='', help='suffix to use for wandb')

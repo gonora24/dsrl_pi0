@@ -435,9 +435,9 @@ def main(variant):
     ## Replay Buffer
     # print_full_config(variant, agent=agent, extra=config_extra)
     if variant.chunk_reward and not variant.algorithm == 'dsrl_na':
-        online_buffer_size = variant.max_steps
+        online_buffer_size = variant.online_buffer_size if variant.online_buffer_size > 0 else variant.max_steps
     else:
-        online_buffer_size = variant.max_steps // variant.multi_grad_step
+        online_buffer_size = variant.online_buffer_size if variant.online_buffer_size > 0 else variant.max_steps // variant.multi_grad_step
     chunk_size = variant.query_freq if variant.chunk_reward else 0
     online_replay_buffer = ReplayBuffer(
         dummy_env.observation_space,
@@ -447,6 +447,7 @@ def main(variant):
     )
     if variant.algorithm == 'dsrl_na':
         online_replay_buffer.load_from_hdf5(variant.trajectory_hdf5_path, chunk_reward=variant.chunk_reward, query_freq=variant.query_freq, discount=variant.discount)
+        print(f"Loaded {online_replay_buffer.size} trajectories from {variant.trajectory_hdf5_path}", flush=True)
     replay_buffer = online_replay_buffer
     replay_buffer.seed(variant.seed)
     if variant.algorithm == 'dsrl_na':
