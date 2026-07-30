@@ -9,7 +9,7 @@ import pickle
 
 import copy
 
-from jaxrl2.data.dataset import Dataset, DatasetDict
+from jaxrl2.data.dataset import Dataset, DatasetDict, H5Dataset
 import collections
 from flax.core import frozen_dict
 
@@ -327,3 +327,51 @@ class ReplayBuffer(Dataset):
                         })
 
                 self.increment_traj_counter()
+
+class H5ReplayBuffer(H5Dataset):
+    def __init__(self, path: str):
+        print("making buffer from hdf5 file at ", path)
+        self.h5_file = h5py.File(path, 'r')
+        self.data = {
+            'observations': {},
+            'noise': {},
+            'actions': {},
+        }
+        self.load_from_hdf5(path)
+
+
+
+    def load_from_hdf5(self, filename: str):
+        """Load trajectories from an HDF5 file into the replay buffer.
+
+        Args:
+            filename: Path to the HDF5 file written by collect_trajectories.py.
+        """
+        with h5py.File(filename, 'r') as f:
+            for key in sorted(f['data'].keys()):
+                if key == 'obs/pixels':
+                    self.data['observations']['pixels'] = f['data']['obs/pixels'][:]
+                elif key == 'obs/state':
+                    self.data['observations']['state'] = f['data']['obs/state'][:]
+                elif key == 'noise':
+                    self.data['noise'] = f['data']['noise'][:]
+                elif key == 'actions':
+                    self.data['actions'] = f['data']['actions'][:]
+                else:
+                    raise ValueError(f"Unknown key: {key}")
+
+    def get_iterator(self, batch_size: int, keys: Optional[Iterable[str]] = None, indx: Optional[np.ndarray] = None, queue_size: int = 2):
+        # See https://flax.readthedocs.io/en/latest/_modules/flax/jax_utils.html#prefetch_to_device
+        # queue_size = 2 should be ok for one GPU.
+
+        queue = collections.deque()
+
+        def enqueue(n):
+            for _ in range(n):
+                data = self.sample(batch_size, keys, indx)
+                queue.append(jax.device_put(data))
+
+        enqueue(queue_size)
+        while queue:
+            yield queue.popleft()
+            enqueue(1)

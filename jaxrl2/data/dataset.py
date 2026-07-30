@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 from typing import Dict, Iterable, Optional, Tuple, Union
+import h5py
 import jax
 import numpy as np
 from gym.utils import seeding
@@ -114,3 +115,15 @@ class Dataset(object):
         train_dataset_dict, test_dataset_dict = _split(self.dataset_dict,
                                                        index)
         return Dataset(train_dataset_dict), Dataset(test_dataset_dict)
+
+class H5Dataset(Dataset):
+    def __init__(self, path: str):
+        self.path = path
+        self.file = h5py.File(path, 'r')
+        self.keys = list(self.file.keys())
+
+    def __len__(self) -> int:
+        return self.file.attrs['n_saved']
+
+    def __getitem__(self, index: int) -> DatasetDict:
+        return {k: self.file[k][index] for k in self.file.keys()}
