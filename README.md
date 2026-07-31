@@ -67,6 +67,9 @@ pip install "jax[cuda12]==0.5.0"
 
 # to handle conflicting CUDA versions
 unset LD_LIBRARY_PATH
+
+# for XVLA
+pip install huggingface-hub==0.36.0
 ```
 
 ## Training (Simulation)
