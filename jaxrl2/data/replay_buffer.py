@@ -329,23 +329,26 @@ class ReplayBuffer(Dataset):
                 self.increment_traj_counter()
 
 class H5ReplayBuffer(H5Dataset):
-    def __init__(self, path: str):
+    def __init__(self, path: str, action_space: gym.Space,):
+        super().__init__(path)
         print("making buffer from hdf5 file at ", path)
-        self.file = h5py.File(path, 'r')  # kept for len()/attrs; sampling uses self.data below
+        self.action_space = action_space
         self.data = {
             'observations': {},
             'noise': {},
             'actions': {},
         }
+        self.size = 0
         self.load_from_hdf5(path)
+        self.size = len(self.data['actions'])
 
     def load_from_hdf5(self, filename: str):
         """Load trajectories from the HDF5 file written by collect_trajectories.py."""
         with h5py.File(filename, 'r') as f:
             n = f.attrs['n_saved']
-            self.data['observations']['pixels'] = f['obs_pixels'][:n]
+            self.data['observations']['pixels'] = f['obs_pixels'][:n][..., None] # (n, h, w, 1)
             if 'obs_state' in f:
-                self.data['observations']['state'] = f['obs_state'][:n]
+                self.data['observations']['state'] = f['obs_state'][:n][..., None]  # (n, state_dim, 1)
             self.data['noise'] = f['noise'][:n]
             self.data['actions'] = f['actions'][:n]
 
@@ -363,14 +366,15 @@ class H5ReplayBuffer(H5Dataset):
         if 'noise' in want:
             batch['noise'] = self.data['noise'][indx]
         if 'actions' in want:
-            batch['actions'] = self.data['actions'][indx]
+            batch['actions'] = self.data['actions'][indx][..., :self.action_space.shape[1]]
+            print(f"action shape: {batch['actions'].shape}")
         if 'observations' in want:
             obs = {'pixels': self.data['observations']['pixels'][indx]}
             if 'state' in self.data['observations']:
                 obs['state'] = self.data['observations']['state'][indx]
             batch['observations'] = obs
 
-        return batch
+        return frozen_dict.freeze(batch)
 
     def get_iterator(self, batch_size: int, keys: Optional[Iterable[str]] = None,
                       indx: Optional[np.ndarray] = None, queue_size: int = 2):
@@ -393,6 +397,7 @@ class H5ReplayBuffer(H5Dataset):
 #         print("making buffer from hdf5 file at ", path)
 #         self.file = h5py.File(path, 'r')  # kept open; data is read lazily per-sample, not loaded upfront
 #         self.has_state = 'obs_state' in self.file
+#         self.size = self.file.attrs['n_saved']
 
 #     @staticmethod
 #     def _read_indices(dataset: h5py.Dataset, indx: np.ndarray) -> np.ndarray:

@@ -448,10 +448,10 @@ def main(variant):
     )
     if variant.algorithm == 'dsrl_na':
         online_replay_buffer.load_from_hdf5(variant.trajectory_hdf5_path, chunk_reward=variant.chunk_reward, query_freq=variant.query_freq, discount=variant.discount)
-        print(f"Loaded {online_replay_buffer.size} trajectories from {variant.trajectory_hdf5_path}", flush=True)
+        print(f"Loaded {online_replay_buffer._traj_counter} trajectories and {online_replay_buffer.size} transitions from {variant.trajectory_hdf5_path}", flush=True)
         if variant.use_noise_mapping_distill:
-            noise_mapping_distill_buffer = H5ReplayBuffer(variant.noise_mapping_distill_hdf5_path)
-            print(f"Loaded {noise_mapping_distill_buffer.size} trajectories from {variant.noise_mapping_distill_hdf5_path}", flush=True)
+            noise_mapping_distill_buffer = H5ReplayBuffer(variant.noise_mapping_distill_path, dummy_env.action_space)
+            print(f"Loaded {noise_mapping_distill_buffer.size} mappings from {variant.noise_mapping_distill_path}", flush=True)
         else:
             noise_mapping_distill_buffer = None
     replay_buffer = online_replay_buffer

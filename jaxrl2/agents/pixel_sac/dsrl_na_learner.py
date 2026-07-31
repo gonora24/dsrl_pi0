@@ -90,7 +90,7 @@ def prepare_batch(batch: DatasetDict, color_jitter: bool, aug_next: bool, num_ca
                     aug_pixels = aug_pixels.at[:,:,:,i*3:(i+1)*3].set((color_transform(key, aug_pixels[:,:,:,i*3:(i+1)*3].astype(jnp.float32)/255.)*255).astype(jnp.uint8))
             else:
                 aug_pixels = (color_transform(key, aug_pixels.astype(jnp.float32)/255.)*255).astype(jnp.uint8)
-
+    
     observations = batch['observations'].copy(add_or_replace={'pixels': aug_pixels})
     batch = batch.copy(add_or_replace={'observations': observations})
 
@@ -424,6 +424,8 @@ class DSRLNALearner(Agent):
         log_boundaries = not self._logged_update_boundaries
         if log_boundaries:
             print("DSRL-NA update: preparing augmented batches", flush=True)
+        if use_noise_mapping_distill:
+            self.aug_next = False
         batch_distill = prepare_batch(batch_distill, self.color_jitter, self.aug_next, self.num_cameras, self._rng)
         batch_train = prepare_batch(batch_train, self.color_jitter, self.aug_next, self.num_cameras, self._rng)
 
