@@ -100,6 +100,7 @@ if __name__ == '__main__':
     )
     parser.add_argument('--vla', default='openpi', help='vla type', type=str)
     parser.add_argument('--only_predict_dims_until', default=-1, help='only predict dimensions until this dimension', type=int)
+    parser.add_argument('--use_noise_mapping_distill', default=0, help='use noise mapping distillation', type=int)
     train_args_dict = dict(
         actor_lr=1e-4,
         critic_lr= 3e-4,

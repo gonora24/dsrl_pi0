@@ -2,6 +2,7 @@
 import os
 
 from jaxrl2.agents.pixel_sac.dsrl_na_learner import DSRLNALearner
+from jaxrl2.data.replay_buffer import H5ReplayBuffer
 # Tell XLA to use Triton GEMM, this improves steps/sec by ~30% on some GPUs from https://github.com/huggingface/gym-aloha/tree/main?tab=readme-ov-file#-gpu-rendering-egl
 xla_flags = os.environ.get('XLA_FLAGS', '')
 xla_flags += ' --xla_gpu_triton_gemm_any=True'
@@ -448,10 +449,15 @@ def main(variant):
     if variant.algorithm == 'dsrl_na':
         online_replay_buffer.load_from_hdf5(variant.trajectory_hdf5_path, chunk_reward=variant.chunk_reward, query_freq=variant.query_freq, discount=variant.discount)
         print(f"Loaded {online_replay_buffer.size} trajectories from {variant.trajectory_hdf5_path}", flush=True)
+        if variant.use_noise_mapping_distill:
+            noise_mapping_distill_buffer = H5ReplayBuffer(variant.noise_mapping_distill_hdf5_path)
+            print(f"Loaded {noise_mapping_distill_buffer.size} trajectories from {variant.noise_mapping_distill_hdf5_path}", flush=True)
+        else:
+            noise_mapping_distill_buffer = None
     replay_buffer = online_replay_buffer
     replay_buffer.seed(variant.seed)
     if variant.algorithm == 'dsrl_na':
-        offline_to_online_training_loop(variant, agent, env, eval_env, online_replay_buffer, replay_buffer, wandb_logger, shard_fn=shard_fn, agent_dp=agent_dp)
+        offline_to_online_training_loop(variant, agent, env, eval_env, online_replay_buffer, replay_buffer, noise_mapping_distill_buffer, wandb_logger, shard_fn=shard_fn, agent_dp=agent_dp)
     else:
         trajwise_alternating_training_loop(variant, agent, env, eval_env, online_replay_buffer, replay_buffer, wandb_logger, shard_fn=shard_fn, agent_dp=agent_dp)
  

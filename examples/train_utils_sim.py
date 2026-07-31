@@ -338,9 +338,11 @@ def print_pre_update_summary(variant, agent):
     _print_param_tree("target_critic", agent._target_critic_params)
     print("=" * 80)
 
-def offline_to_online_training_loop(variant, agent, env, eval_env, online_replay_buffer, replay_buffer, wandb_logger,
+def offline_to_online_training_loop(variant, agent, env, eval_env, online_replay_buffer, replay_buffer, noise_mapping_distill_buffer, wandb_logger,
                                        perform_control_evals=True, shard_fn=None, agent_dp=None):
     replay_buffer_iterator = replay_buffer.get_iterator(variant.batch_size)
+    if noise_mapping_distill_buffer is not None:
+        noise_mapping_distill_buffer_iterator = noise_mapping_distill_buffer.get_iterator(variant.batch_size)
     if shard_fn is not None:
         replay_buffer_iterator = map(shard_fn, replay_buffer_iterator)
 
@@ -354,10 +356,14 @@ def offline_to_online_training_loop(variant, agent, env, eval_env, online_replay
         # Phase 1: offline
         while i < num_offline_steps:
             print(f'offline update step: {i} started')
-            batch_distill = next(replay_buffer_iterator)
+            if noise_mapping_distill_buffer is not None:
+                batch_distill = next(noise_mapping_distill_buffer_iterator)
+                print(f'batch_distill actions shape: {batch_distill["actions"].shape}')
+            else:
+                batch_distill = next(replay_buffer_iterator)
             batch_train = next(replay_buffer_iterator)
 
-            update_info = agent.update(batch_distill, batch_train, variant.env, variant.task_description)
+            update_info = agent.update(batch_distill, batch_train, variant.env, variant.task_description, variant.use_noise_mapping_distill)
             pbar.update()
             print(f'offline update step: {i} done')
             i += 1
@@ -409,7 +415,7 @@ def offline_to_online_training_loop(variant, agent, env, eval_env, online_replay
                 for _ in range(num_gradsteps):
                     batch_distill = next(replay_buffer_iterator)
                     batch_train = next(replay_buffer_iterator)
-                    update_info = agent.update(batch_distill, batch_train, variant.env, variant.task_description)
+                    update_info = agent.update(batch_distill, batch_train, variant.env, variant.task_description, variant.use_noise_mapping_distill)
                     pbar.update()
                     i += 1
 

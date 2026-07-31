@@ -331,7 +331,7 @@ class ReplayBuffer(Dataset):
 class H5ReplayBuffer(H5Dataset):
     def __init__(self, path: str):
         print("making buffer from hdf5 file at ", path)
-        self.h5_file = h5py.File(path, 'r')
+        self.file = h5py.File(path, 'r')  # kept for len()/attrs; sampling uses self.data below
         self.data = {
             'observations': {},
             'noise': {},
@@ -339,31 +339,43 @@ class H5ReplayBuffer(H5Dataset):
         }
         self.load_from_hdf5(path)
 
-
-
     def load_from_hdf5(self, filename: str):
-        """Load trajectories from an HDF5 file into the replay buffer.
-
-        Args:
-            filename: Path to the HDF5 file written by collect_trajectories.py.
-        """
+        """Load trajectories from the HDF5 file written by collect_trajectories.py."""
         with h5py.File(filename, 'r') as f:
-            for key in sorted(f['data'].keys()):
-                if key == 'obs/pixels':
-                    self.data['observations']['pixels'] = f['data']['obs/pixels'][:]
-                elif key == 'obs/state':
-                    self.data['observations']['state'] = f['data']['obs/state'][:]
-                elif key == 'noise':
-                    self.data['noise'] = f['data']['noise'][:]
-                elif key == 'actions':
-                    self.data['actions'] = f['data']['actions'][:]
-                else:
-                    raise ValueError(f"Unknown key: {key}")
+            n = f.attrs['n_saved']
+            self.data['observations']['pixels'] = f['obs_pixels'][:n]
+            if 'obs_state' in f:
+                self.data['observations']['state'] = f['obs_state'][:n]
+            self.data['noise'] = f['noise'][:n]
+            self.data['actions'] = f['actions'][:n]
 
-    def get_iterator(self, batch_size: int, keys: Optional[Iterable[str]] = None, indx: Optional[np.ndarray] = None, queue_size: int = 2):
+    def sample(self, batch_size: int, keys: Optional[Iterable[str]] = None,
+               indx: Optional[np.ndarray] = None) -> DatasetDict:
+        n = len(self)  # n_saved
+
+        if indx is None:
+            indx = np.random.randint(n, size=batch_size)
+
+        want = set(keys) if keys is not None else {'observations', 'noise', 'actions'}
+
+        batch: DatasetDict = {}
+
+        if 'noise' in want:
+            batch['noise'] = self.data['noise'][indx]
+        if 'actions' in want:
+            batch['actions'] = self.data['actions'][indx]
+        if 'observations' in want:
+            obs = {'pixels': self.data['observations']['pixels'][indx]}
+            if 'state' in self.data['observations']:
+                obs['state'] = self.data['observations']['state'][indx]
+            batch['observations'] = obs
+
+        return batch
+
+    def get_iterator(self, batch_size: int, keys: Optional[Iterable[str]] = None,
+                      indx: Optional[np.ndarray] = None, queue_size: int = 2):
         # See https://flax.readthedocs.io/en/latest/_modules/flax/jax_utils.html#prefetch_to_device
         # queue_size = 2 should be ok for one GPU.
-
         queue = collections.deque()
 
         def enqueue(n):
@@ -375,3 +387,61 @@ class H5ReplayBuffer(H5Dataset):
         while queue:
             yield queue.popleft()
             enqueue(1)
+
+# class H5ReplayBuffer(H5Dataset):
+#     def __init__(self, path: str):
+#         print("making buffer from hdf5 file at ", path)
+#         self.file = h5py.File(path, 'r')  # kept open; data is read lazily per-sample, not loaded upfront
+#         self.has_state = 'obs_state' in self.file
+
+#     @staticmethod
+#     def _read_indices(dataset: h5py.Dataset, indx: np.ndarray) -> np.ndarray:
+#         """
+#         h5py's fancy indexing requires sorted, unique indices for a read.
+#         Random sampling (especially with replacement) won't satisfy that, so
+#         we read the unique/sorted set and then expand back to the original
+#         (possibly unsorted/duplicated) order via the inverse map.
+#         """
+#         unique_indx, inverse = np.unique(indx, return_inverse=True)
+#         return dataset[unique_indx][inverse]
+
+#     def sample(self, batch_size: int, keys: Optional[Iterable[str]] = None,
+#                indx: Optional[np.ndarray] = None) -> DatasetDict:
+#         n = len(self)  # n_saved
+
+#         if indx is None:
+#             indx = np.random.randint(n, size=batch_size)
+#         else:
+#             indx = np.asarray(indx)
+
+#         want = set(keys) if keys is not None else {'observations', 'noise', 'actions'}
+
+#         batch: DatasetDict = {}
+
+#         if 'noise' in want:
+#             batch['noise'] = self._read_indices(self.file['noise'], indx)
+#         if 'actions' in want:
+#             batch['actions'] = self._read_indices(self.file['actions'], indx)
+#         if 'observations' in want:
+#             obs = {'pixels': self._read_indices(self.file['obs_pixels'], indx)}
+#             if self.has_state:
+#                 obs['state'] = self._read_indices(self.file['obs_state'], indx)
+#             batch['observations'] = obs
+
+#         return batch
+
+#     def get_iterator(self, batch_size: int, keys: Optional[Iterable[str]] = None,
+#                       indx: Optional[np.ndarray] = None, queue_size: int = 2):
+#         # See https://flax.readthedocs.io/en/latest/_modules/flax/jax_utils.html#prefetch_to_device
+#         # queue_size = 2 should be ok for one GPU.
+#         queue = collections.deque()
+
+#         def enqueue(n):
+#             for _ in range(n):
+#                 data = self.sample(batch_size, keys, indx)
+#                 queue.append(jax.device_put(data))
+
+#         enqueue(queue_size)
+#         while queue:
+#             yield queue.popleft()
+#             enqueue(1)

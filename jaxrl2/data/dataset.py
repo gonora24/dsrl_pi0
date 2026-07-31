@@ -120,10 +120,16 @@ class H5Dataset(Dataset):
     def __init__(self, path: str):
         self.path = path
         self.file = h5py.File(path, 'r')
-        self.keys = list(self.file.keys())
 
     def __len__(self) -> int:
         return self.file.attrs['n_saved']
 
     def __getitem__(self, index: int) -> DatasetDict:
-        return {k: self.file[k][index] for k in self.file.keys()}
+        item = {
+            'observations': {'pixels': self.file['obs_pixels'][index]},
+            'noise': self.file['noise'][index],
+            'actions': self.file['actions'][index],
+        }
+        if 'obs_state' in self.file:
+            item['observations']['state'] = self.file['obs_state'][index]
+        return item

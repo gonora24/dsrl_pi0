@@ -77,7 +77,8 @@ def _update_jit(
 
 def prepare_batch(batch: DatasetDict, color_jitter: bool, aug_next: bool, num_cameras: int, rng: PRNGKey) -> DatasetDict:
     aug_pixels = batch['observations']['pixels']
-    aug_next_pixels = batch['next_observations']['pixels']
+    if aug_next:
+        aug_next_pixels = batch['next_observations']['pixels']
     if batch['observations']['pixels'].squeeze().ndim != 2:
         rng, key = jax.random.split(rng)
         aug_pixels = batched_random_crop(key, batch['observations']['pixels'])
@@ -418,7 +419,7 @@ class DSRLNALearner(Agent):
             raise ValueError("Pi0 inference returned non-finite actions.")
         return jax.device_put(jnp.asarray(pi0_actions, dtype=jnp.float32))
 
-    def update(self, batch_distill: DatasetDict, batch_train: DatasetDict, env: str, task_description: str) -> Dict[str, float]:
+    def update(self, batch_distill: DatasetDict, batch_train: DatasetDict, env: str, task_description: str, use_noise_mapping_distill: bool) -> Dict[str, float]:
         """Perform one DSRL-NA update without nested JAX execution callbacks."""
         log_boundaries = not self._logged_update_boundaries
         if log_boundaries:
@@ -433,11 +434,16 @@ class DSRLNALearner(Agent):
             print("DSRL-NA update: running target Pi0 inference", flush=True)
         pi0_next_actions = self._infer_pi0_actions(batch_train['next_observations'], target_noise, env, task_description, int(batch_train['actions'].shape[-1]))
 
-        noise_actions = jax.random.normal(noise_key, (batch_distill['actions'].shape[0], *self.action_chunk_shape))
-        if log_boundaries:
-            print("DSRL-NA update: running distillation Pi0 inference", flush=True)
-        pi0_diffused_actions = self._infer_pi0_actions(
-            batch_distill['observations'], noise_actions, env, task_description, int(batch_distill['actions'].shape[-1]))
+        if use_noise_mapping_distill:
+            noise_actions = batch_distill['noise']
+            pi0_diffused_actions = batch_distill['actions']
+        else:
+            noise_actions = jax.random.normal(noise_key, (batch_distill['actions'].shape[0], *self.action_chunk_shape))
+            if log_boundaries:
+                print("DSRL-NA update: running distillation Pi0 inference", flush=True)
+
+            pi0_diffused_actions = self._infer_pi0_actions(
+                batch_distill['observations'], noise_actions, env, task_description, int(batch_distill['actions'].shape[-1]))
 
         if log_boundaries:
             print("DSRL-NA update: starting compiled actor/critic update", flush=True)
