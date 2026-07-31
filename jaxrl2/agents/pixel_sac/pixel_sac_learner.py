@@ -178,7 +178,8 @@ class PixelSACLearner(Agent):
             self.action_dim = dsrl_action_dim * (1 + residual_n_vectors)
             self.noise_repeats_per_vector = noise_repeats_per_vector
             _critic_is_chunky = False
-        elif num_noise_vectors > 1:
+            print(f'Frozen-baseline residual mode', flush=True)
+        elif num_noise_vectors > 1 and not only_predict_dims_until > 0:
             # Multi-vector mode: actor predicts N independent 32-d noise vectors;
             # each is tiled noise_repeats_per_vector times at rollout before VLA inference.
             self.action_horizon = num_noise_vectors
@@ -186,6 +187,7 @@ class PixelSACLearner(Agent):
             self.action_dim = dsrl_action_dim * num_noise_vectors
             self.noise_repeats_per_vector = noise_repeats_per_vector
             _critic_is_chunky = True
+            print(f'Multi-vector mode', flush=True)
         elif use_chunky_actor_critic and only_predict_dims_until == -1:
             # Normal chunky mode
             self.action_horizon = pi0_action_horizon
@@ -193,6 +195,20 @@ class PixelSACLearner(Agent):
             self.action_dim = dsrl_action_dim * pi0_action_horizon
             self.noise_repeats_per_vector = 1
             _critic_is_chunky = True
+            print(f'Normal chunky mode', flush=True)
+        elif use_chunky_actor_critic and only_predict_dims_until > 0 and num_noise_vectors > 1:
+            # Multi-vector mode with only predicting the first N dimensions
+            self.action_horizon = num_noise_vectors
+            self.action_chunk_shape = (num_noise_vectors, only_predict_dims_until)
+            self.action_dim = only_predict_dims_until * num_noise_vectors
+            self.noise_repeats_per_vector = noise_repeats_per_vector
+            _critic_is_chunky = True
+            print(f'Multi-vector mode with only predicting the first {only_predict_dims_until} dimensions', flush=True)
+            print(f'action_chunk_shape: {self.action_chunk_shape}', flush=True)
+            print(f'action_dim: {self.action_dim}', flush=True)
+            print(f'action_horizon: {self.action_horizon}', flush=True)
+            print(f'noise_repeats_per_vector: {self.noise_repeats_per_vector}', flush=True)
+            print(f'_critic_is_chunky: {_critic_is_chunky}', flush=True)
         elif use_chunky_actor_critic and only_predict_dims_until > 0:
             # Chunky mode with only predicting the first N dimensions
             self.action_horizon = pi0_action_horizon
@@ -213,12 +229,14 @@ class PixelSACLearner(Agent):
             self.action_dim = only_predict_dims_until
             self.noise_repeats_per_vector = 1
             _critic_is_chunky = False
+            print(f'Repeat mode with only predicting the first {only_predict_dims_until} dimensions', flush=True)
         else:
             self.action_horizon = 1
             self.action_chunk_shape = (1, dsrl_action_dim)
             self.action_dim = dsrl_action_dim
             self.noise_repeats_per_vector = 1
             _critic_is_chunky = False
+            print(f'Default mode', flush=True)
 
         self.tau = tau
         self.discount = discount

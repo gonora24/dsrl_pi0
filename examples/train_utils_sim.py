@@ -91,7 +91,8 @@ def _prepare_pi0_noise(actions_noise, agent, pi0_action_horizon):
     """
     if not agent.only_predict_dims_until > 0:
         actions_noise = np.reshape(actions_noise, agent.action_chunk_shape)
-    noise = actions_noise[None]  # (1, N, 32)
+    if actions_noise.ndim == 2:
+        noise = actions_noise[None]  # (1, N, 32)
 
     if getattr(agent, 'interpolate_noise_vectors', False) and noise.shape[1] > 1:
         N = noise.shape[1]
@@ -642,21 +643,28 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
                         noise[:, -1:, :], variant.pi0_action_horizon - noise.shape[1], axis=1
                     )
                     noise = jax.numpy.concatenate([noise, noise_repeat], axis=1)
-                if agent.only_predict_dims_until > 0:
+                if agent.only_predict_dims_until > 0 and variant.num_noise_vectors > 1:
+                    indices = np.arange(0, 2 * variant.num_noise_vectors, step=2)
+                    actions_noise = noise[0, indices, :variant.only_predict_dims_until]
+                elif agent.only_predict_dims_until > 0:
                     actions_noise = noise[0, :agent.action_chunk_shape[0], :variant.only_predict_dims_until]
                 else:
                     actions_noise = noise[0, :agent.action_chunk_shape[0], :]
             else:
                 actions_noise = agent.sample_actions(obs_dict, marginalize_logprobs=variant.marginalize_logprobs,
                                                      use_actor_diff=getattr(variant, 'use_actor_diff', False))
-                if agent.only_predict_dims_until > 0:
+                if agent.only_predict_dims_until > 0 and not variant.num_noise_vectors > 1:
                     # Build full (1, H, 32) noise and embed the actor's 7-dim prediction
                     # into dims 0:only_predict_dims_until across all timesteps of the horizon.
                     noise = jax.random.normal(key, (1, variant.pi0_action_horizon, variant.dsrl_action_dim))
                     noise = noise.at[0, :, :agent.only_predict_dims_until].set(actions_noise[0])
+                elif agent.only_predict_dims_until > 0 and variant.num_noise_vectors > 1:
+                    noise = jax.random.normal(key, (1, variant.pi0_action_horizon, variant.dsrl_action_dim))
+                    actions_noise = jax.numpy.repeat(actions_noise, repeats=2, axis=1)
+                    noise = noise.at[0, :, :agent.only_predict_dims_until].set(actions_noise[0])
                 else:
-                    actions_noise_complete = actions_noise
-                    noise = _prepare_pi0_noise(actions_noise_complete, agent, variant.pi0_action_horizon)
+                    noise = _prepare_pi0_noise(actions_noise, agent, variant.pi0_action_horizon)
+                    print(f'noise for pi05 sampling: {noise.shape}', flush=True)
             
             infer_kwargs = {}
             if getattr(variant, 'vla', 'openpi') == 'xvla':
@@ -1026,12 +1034,16 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
                 else:
                     actions_noise = agent.sample_actions(obs_dict, marginalize_logprobs=variant.marginalize_logprobs,
                                                          use_actor_diff=getattr(variant, 'use_actor_diff', False))
-                    if agent.only_predict_dims_until > 0:
+                    if agent.only_predict_dims_until > 0 and not variant.num_noise_vectors > 0:
                         # Build full (1, H, 32) noise and embed the actor's 7-dim prediction
                         # into dims 0:only_predict_dims_until across all timesteps of the horizon.
                         noise = jax.random.normal(key, (1, variant.pi0_action_horizon, variant.dsrl_action_dim))
                         noise = noise.at[0, :, :agent.only_predict_dims_until].set(actions_noise[0])
                         # noise is already (1, H, 32) — pass directly to agent_dp.infer
+                    elif agent.only_predict_dims_until > 0 and variant.num_noise_vectors > 1:
+                        noise = jax.random.normal(key, (1, variant.pi0_action_horizon, variant.dsrl_action_dim))
+                        actions_noise = jax.numpy.repeat(actions_noise, repeats=2, axis=1)
+                        noise = noise.at[0, :, :agent.only_predict_dims_until].set(actions_noise[0]) 
                     else:
                         noise = _prepare_pi0_noise(actions_noise, agent, variant.pi0_action_horizon)
 
