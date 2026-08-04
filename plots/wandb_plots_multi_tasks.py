@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot W&B success rates for selected runs."""
+"""Plot W&B success rates for 4 tasks in a 2x2 subplot figure with a shared legend."""
 
 from __future__ import annotations
 
@@ -29,8 +29,8 @@ DEFAULT_PROJECT = "DSRL_pi0_Libero"
 DEFAULT_METRIC = "evaluation/success_rate"
 DEFAULT_X_AXIS = "_step"
 DEFAULT_EMA_HALFLIFE = 50_000
+DEFAULT_RUNS_PER_TASK = 4
 
-# Publication-quality styling
 OKABE_ITO = [
     "#0072B2",  # blue
     "#D55E00",  # vermillion
@@ -43,72 +43,58 @@ OKABE_ITO = [
 ]
 
 COLOR_MAP = {
-    "DSRL-SAC Baseline": "#D55E00",  # orange 
-    "Chunked MLP Critic + MLP Actor": "#0072B2",          # blue
-    "Chunked Critic Transformer + MLP Actor": "#56B4E9",    # sky blue
-    "Chunked Critic Transformer + Autoregressive Actor Transformer": "#009E73", # bluish green     
+    "DSRL-SAC (Baseline)": "#D55E00",
+    "Chunked MLP Critic + MLP Actor": "#4C78A8",
+    "Chunked Critic Transformer + MLP Actor": "#4E9F8A",
+    "Chunked Critic Transformer + Autoregressive Actor Transformer": "#009E73",
 }
+
 
 def setup_plot_style():
     sns.set_theme(
         style="ticks",
         context="paper",
     )
-
     plt.rcParams.update({
         "font.family": "DejaVu Sans",
-
-        "axes.titlesize": 14,
-        "axes.labelsize": 11,
+        "figure.titlesize": 30,
+        "axes.titlesize": 15,
+        "axes.labelsize": 13,
         "xtick.labelsize": 10,
         "ytick.labelsize": 10,
-        "legend.fontsize": 13,
-
+        "legend.fontsize": 20,
         "lines.linewidth": 2.5,
         "axes.linewidth": 1.2,
-
         "savefig.dpi": 300,
         "pdf.fonttype": 42,
         "ps.fonttype": 42,
-
         "mathtext.fontset": "cm",
     })
 
 
 def format_training_steps(value: float, _pos: int) -> str:
-    """Format step counts as plain numbers, K, or M labels."""
     if value == 0:
         return "0"
     abs_value = abs(value)
     if abs_value >= 1_000_000:
-        scaled = value / 1_000_000
-        return f"{scaled:g}M"
+        return f"{value / 1_000_000:g}M"
     if abs_value >= 1_000:
-        scaled = value / 1_000
-        return f"{scaled:g}K"
+        return f"{value / 1_000:g}K"
     return f"{int(value)}"
 
 
 def nice_step_ticks(max_step: float) -> list[float]:
-    """Pick readable major ticks such as 0, 250K, 500K, 1M, 2M."""
     if max_step <= 0:
         return [0.0]
-
     nice_units = [
-        50_000,
-        100_000,
-        250_000,
-        500_000,
-        1_000_000,
-        2_000_000,
-        2_500_000,
-        5_000_000,
+        50_000, 100_000, 250_000, 500_000,
+        1_000_000, 2_000_000, 2_500_000, 5_000_000,
     ]
-    target_ticks = 6
+    target_ticks = 5
     best_ticks = [0.0, max_step]
     for unit in nice_units:
         ticks = [float(i * unit) for i in range(int(max_step / unit) + 2) if i * unit <= max_step]
-        if 4 <= len(ticks) <= 10:
+        if 4 <= len(ticks) <= 7:
             return ticks
         if len(ticks) >= 4 and abs(len(ticks) - target_ticks) < abs(len(best_ticks) - target_ticks):
             best_ticks = ticks
@@ -116,10 +102,8 @@ def nice_step_ticks(max_step: float) -> list[float]:
 
 
 def time_weighted_ema(values: np.ndarray, steps: np.ndarray, halflife: float) -> np.ndarray:
-    """Smooth a series with an EMA that respects irregular step spacing."""
     if len(values) == 0 or halflife <= 0:
         return values
-
     tau = halflife / math.log(2)
     smoothed = np.empty(len(values), dtype=float)
     smoothed[0] = float(values[0])
@@ -133,9 +117,10 @@ def time_weighted_ema(values: np.ndarray, steps: np.ndarray, halflife: float) ->
 def apply_smoothing(df: pd.DataFrame, halflife: float) -> pd.DataFrame:
     if halflife <= 0:
         return df
-
     parts: list[pd.DataFrame] = []
-    for _, group in df.groupby("label", sort=False):
+    # Group by individual run (identifier) within each label so that seeds are
+    # smoothed independently before seaborn averages them across runs.
+    for _, group in df.groupby(["label", "identifier"], sort=False):
         group = group.sort_values("step").copy()
         group["success_rate"] = time_weighted_ema(
             group["success_rate"].to_numpy(),
@@ -147,19 +132,18 @@ def apply_smoothing(df: pd.DataFrame, halflife: float) -> pd.DataFrame:
 
 
 def configure_wandb_auth(entity: str | None) -> str | None:
-    """Load credentials from jaxrl2.utils.wandb_config when available."""
     try:
         from jaxrl2.utils.wandb_config import get_wandb_config
-
-        wandb_config = get_wandb_config()
-        os.environ.setdefault("WANDB_API_KEY", wandb_config["WANDB_API_KEY"])
-        os.environ.setdefault("WANDB_USER_EMAIL", wandb_config["WANDB_EMAIL"])
-        os.environ.setdefault("WANDB_USERNAME", wandb_config["WANDB_USERNAME"])
-        if entity is None and wandb_config.get("WANDB_TEAM"):
-            entity = wandb_config["WANDB_TEAM"]
+        # wandb_config = get_wandb_config()
+        # os.environ.setdefault("WANDB_API_KEY", wandb_config["WANDB_API_KEY"])
+        # os.environ.setdefault("WANDB_USER_EMAIL", wandb_config["WANDB_EMAIL"])
+        # os.environ.setdefault("WANDB_USERNAME", wandb_config["WANDB_USERNAME"])
+        os.environ.setdefault("WANDB_TEAM", entity)
+        # if entity is None and wandb_config.get("WANDB_TEAM"):
+        #     entity = wandb_config["WANDB_TEAM"]
     except ImportError:
         pass
-    return entity or os.environ.get("WANDB_ENTITY") or os.environ.get("WANDB_TEAM")
+    return entity
 
 
 def parse_label_mapping(raw: str | None) -> dict[str, str]:
@@ -177,13 +161,11 @@ def parse_label_mapping(raw: str | None) -> dict[str, str]:
 
 
 def metric_ylabel(metric: str) -> str:
-    """Derive a y-axis label from a W&B metric key (e.g. evaluation/success_rate -> Success Rate)."""
     name = metric.rsplit("/", 1)[-1]
     return name.replace("_", " ").title()
 
 
 def short_label(identifier: str) -> str:
-    """Use the suffix after the timestamp when the run id follows project naming."""
     match = re.search(r"_\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}_\d{4}--s-\d+(?:_(.+))?$", identifier)
     if match and match.group(1):
         return match.group(1)
@@ -200,7 +182,6 @@ def fetch_run_history(
     metric: str,
     x_axis: str,
 ) -> pd.DataFrame:
-    """Fetch scalar history for one run from W&B."""
     api = wandb.Api()
     run_path = f"{entity}/{project}/{identifier}" if entity else f"{project}/{identifier}"
     try:
@@ -212,30 +193,22 @@ def fetch_run_history(
     history = run.history(keys=columns, pandas=True)
     if history.empty:
         raise ValueError(f"Run {identifier!r} has no logged values for {metric!r}.")
-
     history = history.dropna(subset=[metric])
     if history.empty:
         raise ValueError(f"Run {identifier!r} only contains NaN values for {metric!r}.")
-
     history = history.rename(columns={metric: "success_rate", x_axis: "step"})
     history["identifier"] = identifier
     history["run_name"] = run.name or identifier
     return history
 
 
-def load_local_run_history(
-    run_dir: Path,
-    metric: str,
-    x_axis: str,
-) -> pd.DataFrame:
-    """Load scalar history from a local offline W&B run directory."""
+def load_local_run_history(run_dir: Path, metric: str, x_axis: str) -> pd.DataFrame:
     run = wandb.Api().from_path(str(run_dir))
     identifier = run.id or run.name or run_dir.name
     columns = [x_axis, metric]
     history = run.history(keys=columns, pandas=True)
     if history.empty:
         raise ValueError(f"Local run {run_dir} has no logged values for {metric!r}.")
-
     history = history.dropna(subset=[metric])
     history = history.rename(columns={metric: "success_rate", x_axis: "step"})
     history["identifier"] = identifier
@@ -254,6 +227,8 @@ def collect_histories(
 ) -> pd.DataFrame:
     frames: list[pd.DataFrame] = []
     for identifier in identifiers:
+        if identifier == "":
+            continue
         path = Path(identifier)
         if path.exists():
             history = load_local_run_history(path, metric, x_axis)
@@ -267,110 +242,137 @@ def collect_histories(
                 x_axis=x_axis,
             )
             key = identifier
-
         label = label_mapping.get(key) or label_mapping.get(identifier) or short_label(key)
         history["label"] = label
         frames.append(history)
-
     return pd.concat(frames, ignore_index=True)
 
 
-def clip_to_shortest_run(df: pd.DataFrame) -> pd.DataFrame:
-    """Keep only steps up to where the shortest run ends."""
+def clip_df_to_shortest_run(df: pd.DataFrame) -> pd.DataFrame:
     max_step = df.groupby("label", sort=False)["step"].max().min()
     return df.loc[df["step"] <= max_step].copy()
 
 
-def plot_success_rates(
-    df: pd.DataFrame,
+def plot_multi_task(
+    task_dfs: list[pd.DataFrame],
+    task_titles: list[str],
     *,
     metric: str,
-    title: str | None,
+    suptitle: str | None,
     output: Path | None,
     show: bool,
     ylim: tuple[float, float] | None,
     ema_halflife: float,
     clip_to_shortest: bool,
+    errorbar: str = "ci",
 ) -> None:
-    if clip_to_shortest:
-        df = clip_to_shortest_run(df)
-    df = apply_smoothing(df, ema_halflife)
-
     setup_plot_style()
-    n_runs = df["label"].nunique()
-    hue_order = df["label"].drop_duplicates().tolist()
-    fig, ax = plt.subplots(figsize=(10, 7))
 
-    sns.lineplot(
-        data=df,
-        x="step",
-        y="success_rate",
-        hue="label",
-        hue_order=hue_order,
-        palette=COLOR_MAP,
-        linewidth=2.5,
-        ax=ax,
-    )
-    # linewidth was 1.8
+    # Process each task dataframe
+    processed: list[pd.DataFrame] = []
+    for df in task_dfs:
+        if clip_to_shortest:
+            df = clip_df_to_shortest_run(df)
+        df = apply_smoothing(df, ema_halflife)
+        processed.append(df)
 
-    max_step = float(df["step"].max())
-    ax.set_xlim(0, max_step)
-    ax.set_xticks(nice_step_ticks(max_step))
-    ax.xaxis.set_major_formatter(FuncFormatter(format_training_steps))
+    # Determine consistent hue order and palette from across all tasks
+    all_labels: list[str] = []
+    for df in processed:
+        for lbl in df["label"].drop_duplicates().tolist():
+            if lbl not in all_labels:
+                all_labels.append(lbl)
 
-    ax.set_xlabel("Training Steps")
-    ax.set_ylabel(metric_ylabel(metric))
-    text =ax.set_title(title or "Evaluation success rate", pad=10)
-    print(text.get_fontproperties().get_size())
-    print(text.get_fontproperties().get_name())
-    ax.tick_params(
-        direction="out",
-        width=1.2,
-        length=5,
-    )
+    # Build palette: use COLOR_MAP when label is known, fall back to OKABE_ITO
+    palette: dict[str, str] = {}
+    fallback_idx = 0
+    for lbl in all_labels:
+        if lbl in COLOR_MAP:
+            palette[lbl] = COLOR_MAP[lbl]
+        else:
+            palette[lbl] = OKABE_ITO[fallback_idx % len(OKABE_ITO)]
+            fallback_idx += 1
 
     ymin_val = 0.0 if ylim is None else ylim[0]
     ymax_val = 1.0 if ylim is None else ylim[1]
     bottom_pad = 0.02 if ymin_val <= 0.0 else 0.0
     top_pad = 0.02 if ymax_val >= 1.0 else 0.0
-    ax.set_ylim(ymin_val - bottom_pad, ymax_val + top_pad)
-    ax.set_axisbelow(True)
+    y_bottom = ymin_val - bottom_pad
+    y_top = ymax_val + top_pad
 
-    ax.grid(
-        which="major",
-        color="0.90",
-        linewidth=0.8,
-    )
-    sns.despine(ax=ax)
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10), sharey=True)
+    axes_flat = axes.flatten()
 
-    n_lines = len(ax.lines)
-    for i, line in enumerate(ax.lines):
-        # First series on top so overlapping curves stay visible.
-        line.set_zorder(3 + n_lines - i)
-        line.set_clip_on(False)
-    # ax.legend(
-    #     loc="upper center",
-    #     bbox_to_anchor=(0.5, -0.22),
-    #     ncol=min(n_runs, 2),
-    #     frameon=True,
-    #     handlelength=2.2,
-    #     handletextpad=0.6,
-    #     columnspacing=1.0,
-    # )
-    ax.legend(
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.22),
-        ncol=min(n_runs, 2),
+    for idx, (df, title) in enumerate(zip(processed, task_titles)):
+        ax = axes_flat[idx]
+
+        # Only use labels that actually appear in this task's data
+        task_labels = df["label"].drop_duplicates().tolist()
+        task_hue_order = [lbl for lbl in all_labels if lbl in task_labels]
+        task_palette = {lbl: palette[lbl] for lbl in task_hue_order}
+
+        sns.lineplot(
+            data=df,
+            x="step",
+            y="success_rate",
+            hue="label",
+            hue_order=task_hue_order,
+            palette=task_palette,
+            linewidth=2.5,
+            ax=ax,
+            legend=False,
+            errorbar=None if errorbar == "none" else errorbar,
+        )
+
+        max_step = float(df["step"].max())
+        ax.set_xlim(0, max_step)
+        ax.set_xticks(nice_step_ticks(max_step))
+        ax.xaxis.set_major_formatter(FuncFormatter(format_training_steps))
+        ax.set_ylim(y_bottom, y_top)
+
+        ax.set_title(title, pad=6)
+        ax.set_xlabel("Training Steps")
+        # Only left column gets the y-axis label
+        ax.set_ylabel(metric_ylabel(metric) if idx % 2 == 0 else "")
+
+        ax.tick_params(direction="out", width=1.2, length=4)
+        ax.set_axisbelow(True)
+        ax.grid(which="major", color="0.90", linewidth=0.8)
+        sns.despine(ax=ax)
+
+        n_lines = len(ax.lines)
+        for i, line in enumerate(ax.lines):
+            line.set_zorder(3 + n_lines - i)
+            line.set_clip_on(False)
+
+    # Shared figure title
+    if suptitle:
+        fig.suptitle(suptitle, y=1.01)
+
+    # Shared legend below the 2x2 grid using proxy artists so it is independent
+    # of any individual axes legend state.
+    from matplotlib.lines import Line2D
+    legend_handles = [
+        Line2D([0], [0], color=palette[lbl], linewidth=2.5, label=lbl)
+        for lbl in all_labels
+    ]
+    n_legend_cols = min(len(all_labels), 2)
+    fig.tight_layout(rect=[0, 0.15, 1, 1])
+
+    fig.legend(
+        handles=legend_handles,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.02),
+        ncol=n_legend_cols,
         frameon=True,
-        fancybox=False,      # square corners
-        framealpha=1.0,      # opaque
-        edgecolor="0.6",     # light gray border
-        facecolor="white",   # white background
+        fancybox=False,
+        framealpha=1.0,
+        edgecolor="0.6",
+        facecolor="white",
         handlelength=2.2,
         handletextpad=0.6,
         columnspacing=1.0,
     )
-    fig.subplots_adjust(bottom=0.28 if n_runs <= 3 else 0.34)
 
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -386,27 +388,44 @@ def plot_success_rates(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Plot evaluation success rates from selected W&B runs. "
-            "Identifiers can be run ids (experiment ids), or local offline run directories."
+            "Plot evaluation success rates for 4 tasks in a 2x2 subplot figure. "
+            "Pass all run identifiers flat via --identifiers (N tasks × runs-per-task). "
+            "Identifiers can be W&B run ids or local offline run directories."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Examples:\n"
-            "  python wandb_plots.py \\\n"
-            "    --identifiers dsrl_pi05_libero_90_task28_2026_06_30_13_50_48_0000--s-0_criticgpt \\\n"
-            "                  dsrl_pi05_libero_90_task28_2026_06_30_14_00_00_0000--s-0_baseline\n\n"
-            "  python wandb_plots.py \\\n"
-            "    --project DSRL_pi0_Libero \\\n"
-            "    --identifiers run_a run_b \\\n"
-            "    --labels run_a=Trafo actor,run_b=MLP actor \\\n"
-            "    --output plots/task28_success.png\n"
+            "Example:\n"
+            "  python wandb_plots_multi_tasks.py \\\n"
+            "    --identifiers task1_run1 task1_run2 task1_run3 task1_run4 \\\n"
+            "                  task2_run1 task2_run2 task2_run3 task2_run4 \\\n"
+            "                  task3_run1 task3_run2 task3_run3 task3_run4 \\\n"
+            "                  task4_run1 task4_run2 task4_run3 task4_run4 \\\n"
+            "    --task-titles 'Task 28' 'Task 42' 'Task 57' 'Task 83' \\\n"
+            "    --runs-per-task 4 \\\n"
+            "    --labels 'task1_run1=Baseline,task1_run2=Method B,...' \\\n"
+            "    --output plots/multi_task_success.svg\n"
         ),
     )
     parser.add_argument(
         "--identifiers",
         nargs="+",
         required=True,
-        help="W&B run ids (experiment ids) or local offline run directories.",
+        help=(
+            "Flat list of W&B run ids or local run dirs, ordered by task. "
+            "Must have length == number-of-tasks × --runs-per-task."
+        ),
+    )
+    parser.add_argument(
+        "--task-titles",
+        nargs="+",
+        required=True,
+        help="One title per task subplot (must match the number of tasks derived from --identifiers).",
+    )
+    parser.add_argument(
+        "--runs-per-task",
+        type=int,
+        default=DEFAULT_RUNS_PER_TASK,
+        help=f"Number of runs per task (default: {DEFAULT_RUNS_PER_TASK}).",
     )
     parser.add_argument(
         "--project",
@@ -434,15 +453,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional legend labels as comma-separated run_id=Label pairs.",
     )
     parser.add_argument(
-        "--title",
+        "--suptitle",
         default=None,
-        help="Optional plot title.",
+        help="Optional super-title for the whole figure.",
     )
     parser.add_argument(
         "--output",
         type=Path,
         default=None,
-        help="Path to save the plot (e.g. plots/success_rates.png).",
+        help="Path to save the plot (e.g. plots/multi_task_success.svg).",
     )
     parser.add_argument(
         "--show",
@@ -466,16 +485,23 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_EMA_HALFLIFE,
         help=(
-            "Halflife in training steps for time-weighted EMA smoothing "
-            f"(default: {DEFAULT_EMA_HALFLIFE}). Set to 0 to disable."
+            f"Halflife in training steps for EMA smoothing (default: {DEFAULT_EMA_HALFLIFE}). "
+            "Set to 0 to disable."
         ),
     )
     parser.add_argument(
         "--clip-to-shortest-run",
         action="store_true",
+        help="Truncate each task's x-axis at the last step of its shortest run.",
+    )
+    parser.add_argument(
+        "--errorbar",
+        default="ci",
+        choices=["ci", "sd", "se", "none"],
         help=(
-            "Truncate all runs and the x-axis at the last step of the shortest run "
-            "(useful for fair comparisons when runs differ in length)."
+            "Error band style when multiple runs share the same label (seeds). "
+            "ci = 95%% bootstrap CI, sd = std dev, se = std error, none = no band "
+            "(default: ci)."
         ),
     )
     return parser
@@ -485,31 +511,59 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    entity = configure_wandb_auth(args.entity)
-    label_mapping = parse_label_mapping(args.labels)
-
-    try:
-        df = collect_histories(
-            args.identifiers,
-            entity=entity,
-            project=args.project,
-            metric=args.metric,
-            x_axis=args.x_axis,
-            label_mapping=label_mapping,
+    n_ids = len(args.identifiers)
+    rpt = args.runs_per_task
+    if n_ids % rpt != 0:
+        print(
+            f"Error: --identifiers length ({n_ids}) is not divisible by "
+            f"--runs-per-task ({rpt}).",
+            file=sys.stderr,
         )
-    except ValueError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
         return 1
 
-    plot_success_rates(
-        df,
+    n_tasks = n_ids // rpt
+    if len(args.task_titles) != n_tasks:
+        print(
+            f"Error: {len(args.task_titles)} --task-titles provided but {n_tasks} tasks "
+            f"inferred from --identifiers / --runs-per-task.",
+            file=sys.stderr,
+        )
+        return 1
+
+    entity = configure_wandb_auth(args.entity)
+    print(f"Entity: {entity}")
+    print(f"Project: {args.project}")
+    label_mapping = parse_label_mapping(args.labels)
+
+    task_dfs: list[pd.DataFrame] = []
+    for t in range(n_tasks):
+        task_ids = args.identifiers[t * rpt : (t + 1) * rpt]
+        print(f"Fetching task {t + 1}/{n_tasks}: {args.task_titles[t]} ...")
+        try:
+            df = collect_histories(
+                task_ids,
+                entity=entity,
+                project=args.project,
+                metric=args.metric,
+                x_axis=args.x_axis,
+                label_mapping=label_mapping,
+            )
+        except ValueError as exc:
+            print(f"Error (task {t + 1}): {exc}", file=sys.stderr)
+            return 1
+        task_dfs.append(df)
+
+    plot_multi_task(
+        task_dfs,
+        args.task_titles,
         metric=args.metric,
-        title=args.title,
+        suptitle=args.suptitle,
         output=args.output,
         show=args.show,
         ylim=(args.ymin, args.ymax),
         ema_halflife=args.ema_halflife,
         clip_to_shortest=args.clip_to_shortest_run,
+        errorbar=args.errorbar,
     )
     return 0
 

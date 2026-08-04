@@ -134,3 +134,6 @@ settings.json
 .vscode/
 jax
 plots/plots/
+plots/plots_multi_tasks/
+plots/plots_two_tasks/
+plots/*.svg
