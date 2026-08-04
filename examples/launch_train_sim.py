@@ -56,6 +56,8 @@ if __name__ == '__main__':
              'The frozen vector is tiled K times and the residual is added on top.')
     parser.add_argument('--residual_hidden_dims', default=None, nargs='+', type=int,
         help='Hidden dims for the residual MLP. Defaults to hidden_dims if not set.')
+    parser.add_argument('--use_residual_mlp', default=0, type=int,
+        help='If 1, use a residual MLP that sums actions and thereby predicts residual.')
     parser.add_argument('--use_transformer_critic', default=0, help='use transformer critic', type=int)
     parser.add_argument('--transformer_n_embd', default=256, help='transformer embedding dimension', type=int)
     parser.add_argument('--transformer_n_head', default=4, help='transformer number of heads', type=int)

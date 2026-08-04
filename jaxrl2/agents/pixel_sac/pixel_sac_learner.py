@@ -158,6 +158,7 @@ class PixelSACLearner(Agent):
                  use_frozen_baseline_residual: bool = False,
                  residual_n_vectors: int = 1,
                  residual_hidden_dims: Sequence[int] = (),
+                 use_residual_mlp: bool = False,
                  ):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1812.05905
@@ -170,6 +171,15 @@ class PixelSACLearner(Agent):
         self.use_transformer_actor = use_transformer_actor
         self.dsrl_action_dim = dsrl_action_dim
         self.pi0_action_horizon = pi0_action_horizon
+        self.num_noise_vectors = num_noise_vectors
+        self.only_predict_dims_until = only_predict_dims_until
+        self.noise_repeats_per_vector = noise_repeats_per_vector
+        self.interpolate_noise_vectors = interpolate_noise_vectors
+        self.use_frozen_baseline_residual = use_frozen_baseline_residual
+        self.residual_n_vectors = residual_n_vectors
+        self.residual_hidden_dims = residual_hidden_dims
+        self.use_residual_mlp = use_residual_mlp
+        
         if use_frozen_baseline_residual:
             # Frozen-baseline residual mode: frozen MLP predicts 1 x 32-d vector;
             # residual MLP adds corrections for residual_n_vectors extra copies.
@@ -316,6 +326,8 @@ class PixelSACLearner(Agent):
                 use_frozen_baseline_residual=use_frozen_baseline_residual,
                 residual_n_vectors=residual_n_vectors,
                 residual_hidden_dims=tuple(residual_hidden_dims) if residual_hidden_dims else tuple(hidden_dims),
+                use_residual_mlp=use_residual_mlp,
+                only_predict_dims_until=only_predict_dims_until,
             )
 
         actor_def = PixelMultiplexer(encoder=encoder_def,

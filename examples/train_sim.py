@@ -414,6 +414,7 @@ def main(variant):
             use_frozen_baseline_residual=bool(getattr(variant, 'use_frozen_baseline_residual', 0)),
             residual_n_vectors=getattr(variant, 'residual_n_vectors', 1),
             residual_hidden_dims=tuple(variant.residual_hidden_dims) if getattr(variant, 'residual_hidden_dims', None) else (),
+            use_residual_mlp=bool(getattr(variant, 'use_residual_mlp', 0)),
         **train_kwargs,
         )
 

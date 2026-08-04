@@ -173,6 +173,8 @@ class LearnedStdTanhNormalPolicy(nn.Module):
     use_frozen_baseline_residual: bool = False
     residual_n_vectors: int = 1
     residual_hidden_dims: Sequence[int] = ()
+    use_residual_mlp: bool = False
+    only_predict_dims_until: int = 7
 
     @nn.compact
     def __call__(self,
@@ -224,6 +226,18 @@ class LearnedStdTanhNormalPolicy(nn.Module):
             # Output: [v_frozen | tile(v_frozen, K) + residual]  shape (B, (1+K)*32)
             means    = jnp.concatenate([frozen_means_sg,    tiled_means    + res_means],    axis=-1)
             log_stds = jnp.concatenate([frozen_log_stds_sg, tiled_log_stds + res_log_stds], axis=-1)
+        elif self.use_residual_mlp and self.action_horizon > 1:
+            outputs = MLP(self.hidden_dims,
+                activate_final=True,
+                dropout_rate=self.dropout_rate)(observations,
+                                            training=training)
+
+            means = nn.Dense(self.action_dim, kernel_init=default_init(1e-2))(outputs)
+
+            log_stds = nn.Dense(self.action_dim, kernel_init=default_init(1e-2))(outputs)
+            log_stds = jnp.clip(log_stds, self.log_std_min, self.log_std_max)
+            means = means.reshape(means.shape[0], -1, self.only_predict_dims_until).cumsum(axis=1).reshape(means.shape[0], -1)
+            log_stds = log_stds.reshape(log_stds.shape[0], -1, self.only_predict_dims_until).cumsum(axis=1).reshape(log_stds.shape[0], -1)
         else:
             outputs = MLP(self.hidden_dims,
                           activate_final=True,
