@@ -176,6 +176,7 @@ class DSRLNALearner(Agent):
                  use_actor_diff: bool = False,
                  agent_dp: Policy = None,
                  pi0_microbatch_size: int = 0,
+                 only_predict_dims_until: int = 0,
     ):
         self.aug_next=aug_next
         self.color_jitter = color_jitter
@@ -190,7 +191,7 @@ class DSRLNALearner(Agent):
         self.dsrl_action_dim = dsrl_action_dim
         self.pi0_microbatch_size = pi0_microbatch_size
         self._logged_update_boundaries = False
-
+        self.only_predict_dims_until = only_predict_dims_until
         if use_chunky_actor_critic:
             self.action_horizon = pi0_action_horizon
             self.action_chunk_shape = (pi0_action_horizon, dsrl_action_dim)
@@ -514,7 +515,7 @@ class DSRLNALearner(Agent):
                     if 'pixels' not in k:
                         next_obs_dict[k] = v[t][None]
 
-                q_value = get_value(action, obs_dict, self._critic)
+                q_value = get_value(action, obs_dict, self._na_critic)
                 q_pred.append(q_value)
 
             traj_images.append(make_visual(q_pred, rewards, masks, observations['pixels']))
