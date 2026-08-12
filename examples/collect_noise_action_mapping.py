@@ -47,11 +47,13 @@ H5_FILENAME = "noise_action_mapping.h5"
 #     the job after a crash / wrong time limit just continues collecting
 #     instead of starting over.
 # ---------------------------------------------------------------------------
-def open_or_create_store(path, num_mappings, noise_shape, action_shape, pixel_shape, state_shape=None):
+def open_or_create_store(path, num_mappings, noise_shape, action_shape, pixel_shape, state_shape=None,
+                          repeat_noise=False):
     f = h5py.File(path, 'a')
 
     if 'n_saved' not in f.attrs:
         f.attrs['n_saved'] = 0
+        f.attrs['repeat_noise'] = bool(repeat_noise)
         f.create_dataset('noise', shape=(0, *noise_shape), maxshape=(num_mappings, *noise_shape),
                           dtype=np.float32, chunks=(1, *noise_shape))
         f.create_dataset('actions', shape=(0, *action_shape), maxshape=(num_mappings, *action_shape),
@@ -63,12 +65,17 @@ def open_or_create_store(path, num_mappings, noise_shape, action_shape, pixel_sh
                               dtype=np.float32, chunks=(1, *state_shape))
         f.flush()
     else:
-        # Resuming: sanity-check the shapes match what this run expects.
+        # Resuming: sanity-check the shapes (and noise mode) match what this run expects.
         assert f['noise'].shape[1:] == noise_shape
         assert f['actions'].shape[1:] == action_shape
         assert f['obs_pixels'].shape[1:] == pixel_shape
         if state_shape is not None:
             assert f['obs_state'].shape[1:] == state_shape
+        assert bool(f.attrs.get('repeat_noise', False)) == bool(repeat_noise), (
+            f"Resuming {path} with --repeat_noise={bool(repeat_noise)}, but the file was "
+            f"created with repeat_noise={bool(f.attrs.get('repeat_noise', False))}. "
+            "Use a different --output_file instead of mixing noise modes in one store."
+        )
 
     return f
 
@@ -167,6 +174,7 @@ def collect_trajectories(variant):
         h5_path, variant.num_mappings,
         noise_shape=(10, 32), action_shape=(10, 32),
         pixel_shape=pixel_shape, state_shape=state_shape,
+        repeat_noise=bool(variant.repeat_noise),
     )
 
     i = f.attrs['n_saved']
@@ -218,9 +226,10 @@ def _make_obs_dict(raw_obs, variant):
 
 
 def collect_traj_pi0(variant, agent_dp, env, traj_id):
-    rng, rng_noise = jax.random.split(agent_dp._rng)
+    rng = agent_dp._rng
     query_frequency = variant.query_freq
     max_timesteps = variant.max_timesteps
+    repeat_noise = bool(getattr(variant, 'repeat_noise', 0))
 
     obs = env.reset()
     action_list = []
@@ -230,12 +239,29 @@ def collect_traj_pi0(variant, agent_dp, env, traj_id):
 
     for t in range(max_timesteps):
         if t % query_frequency == 0:
-            noise = jax.random.normal(rng_noise, (1, 10, 32))
+            # Fresh key per replan step -- previously `rng_noise` was split once
+            # outside the loop and reused unchanged for every query interval in
+            # the trajectory, so every interval got *identical* noise.
+            rng, rng_noise = jax.random.split(rng)
+            if repeat_noise:
+                # "Repeat mode" collection: sample ONE 32-dim noise vector and
+                # tile it across all 10 diffusion steps before denoising, matching
+                # how noise is actually assembled when an actor's single
+                # predicted vector is repeated across the pi0 action horizon
+                # (see train_utils_sim.py's `noise.at[0, :, :N].set(actions_noise[0])`).
+                # This keeps the collected (noise, action) mapping consistent
+                # with what the noise critic is queried with at train/rollout
+                # time, instead of the default mode where all 10 steps use
+                # independently-sampled noise.
+                base_noise = jax.random.normal(rng_noise, (1, 1, 32))
+                noise = jax.numpy.tile(base_noise, (1, 10, 1))
+            else:
+                noise = jax.random.normal(rng_noise, (1, 10, 32))
             obs_processed = obs_to_pi_zero_input(obs, variant)
             actions = agent_dp.infer(obs_processed, noise=noise)["actions"]
             actions_to_save = np.pad(actions, ((0, 0), (0, 32 - actions.shape[1])), mode='constant', constant_values=0.0)
             action_list.append(actions_to_save)
-            noise_list.append(noise[0, :, :])
+            noise_list.append(np.asarray(noise[0, :, :]))
             obs_list.append(_make_obs_dict(obs, variant))
 
         action_t = actions[t % query_frequency]
@@ -267,5 +293,13 @@ if __name__ == '__main__':
     parser.add_argument('--add_states', type=int, default=1)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--resize_image', type=int, default=64)
+    parser.add_argument(
+        '--repeat_noise', type=int, default=0,
+        help='If 1, sample a single 32-dim noise vector per query interval and tile it '
+             'across all 10 diffusion steps before denoising, instead of sampling 10 '
+             'independent per-step noise vectors. Use this to collect noise-action '
+             'mappings consistent with "repeat mode" (use_chunky_actor_critic=0, '
+             'only_predict_dims_until>0) actors, whose single predicted vector is '
+             'likewise repeated across the whole pi0 action horizon.')
     args = parser.parse_args()
     collect_trajectories(args)
