@@ -16,64 +16,52 @@ entity="noragorhan-karlsruhe-institute-of-technology"
 seeds_per_method=2
 
 task1_ids=(
-  "dsrl_pi05_libero_90_task28_2026_06_18_07_59_34_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task29_2026_07_31_08_03_38_0000--s-0_baseline"
   ""
-  "dsrl_pi05_libero_90_task28_2026_08_05_09_10_55_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual"
+  "dsrl_pi05_libero_90_task29_2026_07_31_08_04_03_0000--s-0_baseline_7dims"
   ""
-    # residual with freezing
-  "dsrl_pi05_libero_90_task28_2026_07_29_17_18_42_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual_freeze100k"
+  "dsrl_pi05_libero_90_task29_2026_07_31_08_06_09_0000--s-0_chunkrewardcriticactor_mlp_7dims"
   ""
-  "dsrl_pi05_libero_90_task28_2026_08_07_22_46_43_0000--s-0_criticgpt_aractor_diff_mean"
+  "dsrl_pi05_libero_90_task29_2026_08_07_22_46_43_0000--s-0_criticgpt_aractor_diff_7dims"
   ""
 )
-task1_title="Task 28"
+task1_title="Task 29"
 
-# --- Task 1 ---
+
+# --- Task 2 ---
 task2_ids=(
+  "dsrl_pi05_libero_90_task38_2026_07_31_08_02_00_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task38_2026_07_30_08_07_34_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task38_2026_07_30_08_01_40_0000--s-0_baseline_only7dims"
+  "dsrl_pi05_libero_90_task38_2026_07_31_08_02_05_0000--s-0_baseline_7dims"
+  "dsrl_pi05_libero_90_task38_2026_07_30_17_24_53_0000--s-0_chunkrewardcriticactor_mlp_7dims"
+  ""
+  "dsrl_pi05_libero_90_task38_2026_08_08_16_11_41_0000--s-0_criticgpt_aractor_diff_7dims"
+  ""
+)
+task2_title="Task 38"
+
+task3_ids=(
   "dsrl_pi05_libero_90_task43_2026_07_30_07_38_49_0000--s-0_baseline"
   ""
-  "dsrl_pi05_libero_90_task43_2026_08_05_09_15_05_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual"
+  "dsrl_pi05_libero_90_task43_2026_07_30_07_40_22_0000--s-0_baseline_only7dims"
   ""
-    # residual with freezing
-  "dsrl_pi05_libero_90_task43_2026_07_29_17_18_34_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual_freeze100k"
+  "dsrl_pi05_libero_90_task43_2026_07_30_10_12_54_0000--s-0_chunkrewardcriticactor_mlp_7dims"
   ""
-  "dsrl_pi05_libero_90_task43_2026_08_07_22_46_43_0000--s-0_criticgpt_aractor_diff_mean"
+  "dsrl_pi05_libero_90_task38_2026_08_08_16_11_41_0000--s-0_criticgpt_aractor_diff_7dims"
   ""
 )
-task2_title="Task 43"
-
-# --- Task 2: seeds_per_method × 4 methods ---
-task3_ids=(
-  # DSRL-SAC Baseline (seed 1 & 2)
-  "dsrl_pi05_libero_90_task59_2026_06_19_16_13_16_0000--s-0_baseline"
-  ""
-  # residual without freezing
-  "dsrl_pi05_libero_90_task59_2026_07_12_09_53_42_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual"
-  ""
-  # residual with freezing
-  "dsrl_pi05_libero_90_task59_2026_07_29_17_18_42_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual_freeze100k"
-  ""
-  "dsrl_pi05_libero_90_task59_2026_08_08_16_10_19_0000--s-0_criticgpt_aractor_diff_mean"
-  ""
-) 
-task3_title="Task 59"
-
+task3_title="Task 43"
 
 task4_ids=(
-  # DSRL-SAC Baseline (seed 1 & 2)
-  "dsrl_pi05_libero_90_task60_2026_07_30_07_39_33_0000--s-0_baseline_only7dims"
-  ""
-  # residual without freezing
-  "dsrl_pi05_libero_90_task60_2026_08_04_16_38_56_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual"
-  ""
-  # residual with freezing
-  "dsrl_pi05_libero_90_task60_2026_07_29_17_18_38_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual_freeze100k"
-  ""
-  "dsrl_pi05_libero_90_task60_2026_08_08_16_11_50_0000--s-0_criticgpt_aractor_diff_mean"
-  ""
-) 
-task4_title="Task 60"
-
+  "dsrl_pi05_libero_90_task64_2026_07_30_18_02_06_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task64_2026_07_30_08_09_38_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task64_2026_07_30_07_59_18_0000--s-0_baseline_only7dims"
+  "dsrl_pi05_libero_90_task64_2026_07_31_07_59_42_0000--s-0_baseline_7dims"
+  "dsrl_pi05_libero_90_task64_2026_07_30_15_25_17_0000--s-0_chunkrewardcriticactor_mlp_7dims"
+  "dsrl_pi05_libero_90_task64_2026_07_30_17_25_51_0000--s-0_chunkrewardcriticactor_mlp_7dims"
+)
+task4_title="Task 64"
 
 # ---------------------------------------------------------------------------
 # Shared legend labels — runs at position i within a task block belong to
@@ -82,9 +70,9 @@ task4_title="Task 60"
 # ---------------------------------------------------------------------------
 method_labels=(
   "DSRL-SAC (Baseline)"
-  "FDTS-Residual-Noise (no freezing)"
-  "FDTS-Residual-Noise (with freezing)"
-  "FDTS-Residual-Mean (no freezing)"
+  "RDS"
+  "T-RDS"
+  "T-RDS-Residual-Noise"
 )
 
 all_task_ids=(
@@ -107,7 +95,7 @@ done
 metric="evaluation/success_rate"
 x_axis="_step"
 suptitle="\$\pi_{0.5}\$ LIBERO-90"
-output="plots/plots_multi_tasks/pi05_libero90_autoresidual_differentcolors.svg"
+output="plots/plots_multi_tasks/pi05_libero90_7dims_chunk_correct_names.svg"
 show_plot=0
 ymin=0.0
 ymax=1.0
@@ -124,7 +112,7 @@ extra_args=()
 
 labels_str=$(IFS=','; echo "${labels[*]}")
 
-python3 plots/wandb_plots_residual_auto.py \
+python3 plots/wandb_plots_multi_tasks.py \
   --project "${proj_name}" \
   --entity "${entity}" \
   --identifiers "${all_task_ids[@]}" \
@@ -139,5 +127,6 @@ python3 plots/wandb_plots_residual_auto.py \
   --labels "${labels_str}" \
   --suptitle "${suptitle}" \
   --errorbar ci \
-  --max-steps 800000 \
+  --max-steps 1000000 \
+  --dim-colors 1 \
   "${extra_args[@]}"

@@ -16,7 +16,7 @@ entity="noragorhan-karlsruhe-institute-of-technology"
 seeds_per_method=2
 
 task1_ids=(
-  "dsrl_pi05_libero_90_task28_2026_06_18_07_59_34_0000--s-0_baseline"
+  ""
   ""
   "dsrl_pi05_libero_90_task28_2026_08_05_09_10_55_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual"
   ""
@@ -30,7 +30,7 @@ task1_title="Task 28"
 
 # --- Task 1 ---
 task2_ids=(
-  "dsrl_pi05_libero_90_task43_2026_07_30_07_38_49_0000--s-0_baseline"
+  ""
   ""
   "dsrl_pi05_libero_90_task43_2026_08_05_09_15_05_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual"
   ""
@@ -44,8 +44,7 @@ task2_title="Task 43"
 
 # --- Task 2: seeds_per_method × 4 methods ---
 task3_ids=(
-  # DSRL-SAC Baseline (seed 1 & 2)
-  "dsrl_pi05_libero_90_task59_2026_06_19_16_13_16_0000--s-0_baseline"
+  ""
   ""
   # residual without freezing
   "dsrl_pi05_libero_90_task59_2026_07_12_09_53_42_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual"
@@ -60,8 +59,7 @@ task3_title="Task 59"
 
 
 task4_ids=(
-  # DSRL-SAC Baseline (seed 1 & 2)
-  "dsrl_pi05_libero_90_task60_2026_07_30_07_39_33_0000--s-0_baseline_only7dims"
+  ""
   ""
   # residual without freezing
   "dsrl_pi05_libero_90_task60_2026_08_04_16_38_56_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual"
@@ -81,7 +79,7 @@ task4_title="Task 60"
 # method share an identical label so that seaborn averages them together.
 # ---------------------------------------------------------------------------
 method_labels=(
-  "DSRL-SAC (Baseline)"
+  ""
   "FDTS-Residual-Noise (no freezing)"
   "FDTS-Residual-Noise (with freezing)"
   "FDTS-Residual-Mean (no freezing)"
@@ -104,15 +102,15 @@ for task_ids_ref in task1_ids task2_ids task3_ids task4_ids; do
 done
 
 # --- Plot settings ---
-metric="evaluation/success_rate"
+metric="training/residual_mean_mean"
 x_axis="_step"
 suptitle="\$\pi_{0.5}\$ LIBERO-90"
-output="plots/plots_multi_tasks/pi05_libero90_autoresidual_differentcolors.svg"
+output="plots/plots_multi_tasks/pi05_libero90_fdts_residuals_allresidualmethods.svg"
 show_plot=0
-ymin=0.0
-ymax=1.0
 ema_halflife=25000
 clip_to_shortest_run=0
+ymin=-0.07
+ymax=0.07
 
 export LD_LIBRARY_PATH=
 export PYTHONPATH="${PYTHONPATH}:/home/hk-project-pai00139/eu3660/dsrl_pi0/dsrl_pi0/"
@@ -124,7 +122,7 @@ extra_args=()
 
 labels_str=$(IFS=','; echo "${labels[*]}")
 
-python3 plots/wandb_plots_residual_auto.py \
+python3 plots/wandb_plots_multi_tasks.py \
   --project "${proj_name}" \
   --entity "${entity}" \
   --identifiers "${all_task_ids[@]}" \

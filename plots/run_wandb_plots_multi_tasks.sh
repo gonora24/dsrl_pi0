@@ -23,7 +23,7 @@ task1_ids=(
   "dsrl_pi05_libero_90_task31_2026_06_29_00_05_41_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
   "dsrl_pi05_libero_90_task31_2026_06_29_06_40_55_0000--s-0_chunkrewardcriticactor_criticgpt_2numqs_10replan"
   "dsrl_pi05_libero_90_task31_2026_06_29_08_42_40_0000--s-0_chunkrewardcriticactor_criticgpt_2numqs_10replan"
-  ""
+  "dsrl_pi05_libero_90_task31_2026_08_04_14_47_42_0000--s-0_criticgpt_aractor_10replan"
   ""
 )
 task1_title="Task 31"
@@ -40,7 +40,7 @@ task2_ids=(
   "dsrl_pi05_libero_90_task38_2026_06_29_06_43_09_0000--s-0_chunkrewardcriticactor_criticgpt_2numqs_10replan"
   "dsrl_pi05_libero_90_task38_2026_06_29_08_55_15_0000--s-0_chunkrewardcriticactor_criticgpt_2numqs_10replan"
   # Chunked Critic Transformer + AR Actor (seed 1 & 2)
-  ""
+  "dsrl_pi05_libero_90_task38_2026_08_03_22_24_57_0000--s-0_criticgpt_aractor_10replan"
   ""
 ) #dsrl_pi05_libero_90_task38_2026_08_03_22_24_57_0000--s-0_criticgpt_aractor_10replan
 task2_title="Task 38"
@@ -57,7 +57,7 @@ task3_ids=(
   "dsrl_pi05_libero_90_task43_2026_06_29_06_48_16_0000--s-0_chunkrewardcriticactor_criticgpt_2numqs_10replan"
   "dsrl_pi05_libero_90_task43_2026_06_29_08_55_16_0000--s-0_chunkrewardcriticactor_criticgpt_2numqs_10replan"
   # Chunked Critic Transformer + AR Actor
-  ""
+  "dsrl_pi05_libero_90_task43_2026_08_03_22_08_28_0000--s-0_criticgpt_aractor_10replan"
   ""
 ) #dsrl_pi05_libero_90_task43_2026_08_03_22_08_28_0000--s-0_criticgpt_aractor_10replan
 task3_title="Task 43"
@@ -70,7 +70,7 @@ task4_ids=(
   "dsrl_pi05_libero_90_task64_2026_06_28_11_05_20_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
   "dsrl_pi05_libero_90_task64_2026_06_29_07_04_06_0000--s-0_chunkrewardcriticactor_criticgpt_2numqs_10replan"
   "dsrl_pi05_libero_90_task64_2026_06_29_09_15_53_0000--s-0_chunkrewardcriticactor_criticgpt_2numqs_10replan"
-  ""
+  "dsrl_pi05_libero_90_task64_2026_08_03_22_08_28_0000--s-0_criticgpt_aractor_10replan"
   ""
 ) #dsrl_pi05_libero_90_task64_2026_08_03_22_08_28_0000--s-0_criticgpt_aractor_10replan
 task4_title="Task 64"
@@ -82,9 +82,9 @@ task4_title="Task 64"
 # ---------------------------------------------------------------------------
 method_labels=(
   "DSRL-SAC (Baseline)"
-  "Chunked MLP Critic + MLP Actor"
-  "Chunked Critic Transformer + MLP Actor"
-  "Chunked Critic Transformer + Autoregressive Actor Transformer"
+  "FDTS-Chunk MLP Actor + MLP Critic"
+  "FDTS-Chunk MLP Actor + Transformer Critic"
+  "FDTS-Chunk AR Transformer Actor + Transformer Critic"
 )
 
 all_task_ids=(
@@ -107,12 +107,13 @@ done
 metric="evaluation/success_rate"
 x_axis="_step"
 suptitle="\$\pi_{0.5}\$ LIBERO-90"
-output="plots/plots_multi_tasks/pi05_libero90_multi_task_success_chunkedsac.svg"
+output="plots/plots_multi_tasks/pi05_libero90_multi_task_success_chunkedsac_fdts.svg"
 show_plot=0
 ymin=0.0
 ymax=1.0
 ema_halflife=25000
 clip_to_shortest_run=0
+max_steps=1000000
 
 export LD_LIBRARY_PATH=
 export PYTHONPATH="${PYTHONPATH}:/home/hk-project-pai00139/eu3660/dsrl_pi0/dsrl_pi0/"
@@ -139,4 +140,5 @@ python3 plots/wandb_plots_multi_tasks.py \
   --labels "${labels_str}" \
   --suptitle "${suptitle}" \
   --errorbar ci \
+  --max-steps "${max_steps}" \
   "${extra_args[@]}"

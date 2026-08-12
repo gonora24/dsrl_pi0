@@ -28,7 +28,7 @@ for font in font_manager.findSystemFonts(fontpaths=[str(font_dir)]):
 DEFAULT_PROJECT = "DSRL_pi0_Libero"
 DEFAULT_METRIC = "evaluation/success_rate"
 DEFAULT_X_AXIS = "_step"
-DEFAULT_EMA_HALFLIFE = 25_000
+DEFAULT_EMA_HALFLIFE = 50_000
 DEFAULT_RUNS_PER_TASK = 4
 
 OKABE_ITO = [
@@ -42,12 +42,19 @@ OKABE_ITO = [
     "#000000",  # black
 ]
 
-COLOR_MAP = {
-    "DSRL-SAC (Baseline)": "#D55E00",
-    "FDTS-Residual-Noise (no freezing)": "#00bed5",
-    "FDTS-Residual-Noise (with freezing)": "#0041d6",
-    "FDTS-Residual-Mean (no freezing)": "#003756",
-}
+METHOD_COLORS = [
+    "#D55E00",  # Baseline
+    "#00bed5",  # Method 2
+    "#0041d6",  # Method 3
+    "#003756",  # Method 4  005889
+]
+
+DIM_COLORS = [
+    "#D55E00",
+    "#5e00d5",
+    "#d50077",
+    "#005889",
+]
 
 
 def setup_plot_style():
@@ -288,6 +295,7 @@ def plot_multi_task(
     clip_to_shortest: bool,
     errorbar: str = "ci",
     max_steps: float | None = None,
+    dim_colors: int = 0,
 ) -> None:
     setup_plot_style()
 
@@ -307,13 +315,18 @@ def plot_multi_task(
         for lbl in df["label"].drop_duplicates().tolist():
             if lbl not in all_labels:
                 all_labels.append(lbl)
-
+    if dim_colors == 1:
+        print("Using dimension-specific colors")
+        task_palette = {lbl: DIM_COLORS[i] for i, lbl in enumerate(all_labels)}
+    else:
+        print("Using method-specific colors")
+        task_palette = {lbl: METHOD_COLORS[i] for i, lbl in enumerate(all_labels)}
     # Build palette: use COLOR_MAP when label is known, fall back to OKABE_ITO
     palette: dict[str, str] = {}
     fallback_idx = 0
     for lbl in all_labels:
-        if lbl in COLOR_MAP:
-            palette[lbl] = COLOR_MAP[lbl]
+        if lbl in task_palette:
+            palette[lbl] = task_palette[lbl]
         else:
             palette[lbl] = OKABE_ITO[fallback_idx % len(OKABE_ITO)]
             fallback_idx += 1
@@ -325,11 +338,10 @@ def plot_multi_task(
     y_bottom = ymin_val - bottom_pad
     y_top = ymax_val + top_pad
 
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10), sharey=True)
-    axes_flat = axes.flatten()
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
 
     for idx, (df, title) in enumerate(zip(processed, task_titles)):
-        ax = axes_flat[idx]
+        ax = axes[idx]
 
         # Only use labels that actually appear in this task's data
         task_labels = df["label"].drop_duplicates().tolist()
@@ -382,8 +394,8 @@ def plot_multi_task(
         for lbl in all_labels
     ]
     n_legend_cols = min(len(all_labels), 2)
-    fig.tight_layout(rect=[0, 0.19, 1, 1])
-
+    # fig.tight_layout(rect=[0, 0.23, 1, 1])
+    fig.tight_layout(rect=[0, 0.18, 1, 1])
     fig.legend(
         handles=legend_handles,
         loc="lower center",
@@ -535,6 +547,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Maximum number of steps to plot (default: None).",
     )
+    parser.add_argument(
+        "--dim-colors",
+        type=int,
+        default=0,
+        help="Use dimension-specific colors (default: 0).",
+    )
     return parser
 
 
@@ -596,6 +614,7 @@ def main(argv: list[str] | None = None) -> int:
         clip_to_shortest=args.clip_to_shortest_run,
         errorbar=args.errorbar,
         max_steps=args.max_steps,
+        dim_colors=args.dim_colors,
     )
     return 0
 

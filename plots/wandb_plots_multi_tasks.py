@@ -48,6 +48,21 @@ COLOR_MAP = {
     "Chunked Critic Transformer + MLP Actor": "#4E9F8A",
     "Chunked Critic Transformer + Autoregressive Actor Transformer": "#009E73",
 }
+METHOD_COLORS = [
+    # "#D55E00",  # Baseline
+    "#00bed5",  # Method 2
+    "#0041d6",  # Method 3
+    "#003756",  # Method 4  005889
+]
+
+DIM_COLORS = [
+    # "#D55E00",  # Baseline
+    "#5e00d5",  # 7dims
+    "#d50077",  # 7dims chunked
+    "#005889",  # 7dims chunked 5vecs
+    "#e691a6",  # 7dims chunked 5vecs residual aractor 
+    "#00d599",  # 7dims chunked 5vecs residualmlp
+]
 
 
 def setup_plot_style():
@@ -188,15 +203,20 @@ def fetch_run_history(
         run = api.run(run_path)
     except wandb.errors.CommError as exc:
         raise ValueError(f"Could not find run {identifier!r} in {project!r}.") from exc
+    metric2 = "training/residual_mean"
+    if metric not in run.summary:
+        columns = [x_axis, metric2]
+    else:
+        columns = [x_axis, metric]
 
-    columns = [x_axis, metric]
     history = run.history(keys=columns, pandas=True)
     if history.empty:
         raise ValueError(f"Run {identifier!r} has no logged values for {metric!r}.")
-    history = history.dropna(subset=[metric])
+    actual_metric = metric if metric in history.columns else metric2
+    history = history.dropna(subset=[actual_metric])
     if history.empty:
         raise ValueError(f"Run {identifier!r} only contains NaN values for {metric!r}.")
-    history = history.rename(columns={metric: "success_rate", x_axis: "step"})
+    history = history.rename(columns={actual_metric: "success_rate", x_axis: "step"})
     history["identifier"] = identifier
     history["run_name"] = run.name or identifier
     return history
@@ -210,7 +230,7 @@ def load_local_run_history(run_dir: Path, metric: str, x_axis: str) -> pd.DataFr
     if history.empty:
         raise ValueError(f"Local run {run_dir} has no logged values for {metric!r}.")
     history = history.dropna(subset=[metric])
-    history = history.rename(columns={metric: "success_rate", x_axis: "step"})
+    # history = history.rename(columns={metric: "success_rate", x_axis: "step"})
     history["identifier"] = identifier
     history["run_name"] = run.name or identifier
     return history
@@ -265,14 +285,20 @@ def plot_multi_task(
     ema_halflife: float,
     clip_to_shortest: bool,
     errorbar: str = "ci",
+    max_steps: float | None = None,
+    label_mapping: dict[str, str] = {},
+    dim_colors: int = 0,
 ) -> None:
     setup_plot_style()
 
     # Process each task dataframe
     processed: list[pd.DataFrame] = []
+    print()
     for df in task_dfs:
         if clip_to_shortest:
             df = clip_df_to_shortest_run(df)
+        if max_steps is not None:
+            df = df.loc[df["step"] <= max_steps]
         df = apply_smoothing(df, ema_halflife)
         processed.append(df)
 
@@ -283,28 +309,42 @@ def plot_multi_task(
             if lbl not in all_labels:
                 all_labels.append(lbl)
 
+    if dim_colors == 1:
+        print("Using dimension-specific colors")
+        task_palette = {lbl: DIM_COLORS[i] for i, lbl in enumerate(all_labels)}
+    else:
+        print("Using method-specific colors")
+        task_palette = {lbl: METHOD_COLORS[i] for i, lbl in enumerate(all_labels)}
+
     # Build palette: use COLOR_MAP when label is known, fall back to OKABE_ITO
     palette: dict[str, str] = {}
     fallback_idx = 0
     for lbl in all_labels:
-        if lbl in COLOR_MAP:
-            palette[lbl] = COLOR_MAP[lbl]
+        if lbl in task_palette:
+            palette[lbl] = task_palette[lbl]
         else:
             palette[lbl] = OKABE_ITO[fallback_idx % len(OKABE_ITO)]
             fallback_idx += 1
 
     ymin_val = 0.0 if ylim is None else ylim[0]
     ymax_val = 1.0 if ylim is None else ylim[1]
-    bottom_pad = 0.02 if ymin_val <= 0.0 else 0.0
-    top_pad = 0.02 if ymax_val >= 1.0 else 0.0
-    y_bottom = ymin_val - bottom_pad
-    y_top = ymax_val + top_pad
-
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10), sharey=True)
-    axes_flat = axes.flatten()
+    if metric == "evaluation/success_rate":
+        bottom_pad = 0.02 if ymin_val <= 0.0 else 0.0
+        top_pad = 0.02 if ymax_val >= 1.0 else 0.0
+        y_bottom = ymin_val - bottom_pad
+        y_top = ymax_val + top_pad
+    else:
+        y_bottom = ymin_val
+        y_top = ymax_val
+    if len(task_titles) == 4:
+        fig, axes = plt.subplots(2, 2, figsize=(14, 10), sharey=True)
+    elif len(task_titles) == 6:
+        fig, axes = plt.subplots(3, 2, figsize=(14, 14), sharey=True)
+    else:
+        raise ValueError(f"Unsupported number of tasks: {len(task_titles)}")
 
     for idx, (df, title) in enumerate(zip(processed, task_titles)):
-        ax = axes_flat[idx]
+        ax = axes[idx // axes.shape[1]][idx % axes.shape[1]]
 
         # Only use labels that actually appear in this task's data
         task_labels = df["label"].drop_duplicates().tolist()
@@ -334,7 +374,8 @@ def plot_multi_task(
         ax.set_xlabel("Training Steps")
         # Only left column gets the y-axis label
         ax.set_ylabel(metric_ylabel(metric) if idx % 2 == 0 else "")
-
+        if metric == "training/residual_mean_mean":
+            ax.set_ylabel("Residual Mean" if idx % 2 == 0 else "")
         ax.tick_params(direction="out", width=1.2, length=4)
         ax.set_axisbelow(True)
         ax.grid(which="major", color="0.90", linewidth=0.8)
@@ -356,8 +397,14 @@ def plot_multi_task(
         Line2D([0], [0], color=palette[lbl], linewidth=2.5, label=lbl)
         for lbl in all_labels
     ]
+
     n_legend_cols = min(len(all_labels), 2)
-    fig.tight_layout(rect=[0, 0.15, 1, 1])
+    if len(task_titles) == 6:
+        fig.tight_layout(rect=[0, 0.10, 1, 1])
+    elif len(all_labels) > 4:
+        fig.tight_layout(rect=[0, 0.18, 1, 1])
+    else:
+        fig.tight_layout(rect=[0, 0.15, 1, 1])
 
     fig.legend(
         handles=legend_handles,
@@ -504,6 +551,18 @@ def build_parser() -> argparse.ArgumentParser:
             "(default: ci)."
         ),
     )
+    parser.add_argument(
+        "--max-steps",
+        type=float,
+        default=None,
+        help="Maximum number of steps to plot (default: None).",
+    )
+    parser.add_argument(
+        "--dim-colors",
+        type=int,
+        default=0,
+        help="Use dimension-specific colors (default: 0).",
+    )
     return parser
 
 
@@ -564,6 +623,9 @@ def main(argv: list[str] | None = None) -> int:
         ema_halflife=args.ema_halflife,
         clip_to_shortest=args.clip_to_shortest_run,
         errorbar=args.errorbar,
+        max_steps=args.max_steps,
+        label_mapping=label_mapping,
+        dim_colors=args.dim_colors,
     )
     return 0
 
