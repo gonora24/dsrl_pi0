@@ -125,12 +125,14 @@ def update_critic(
         target_critic: TrainState, temp: TrainState, batch: DatasetDict,
         discount: float, backup_entropy: bool = False,
         critic_reduction: str = 'min', chunk_reward: bool = False,
-        marginalize_logprobs: bool = False, use_actor_diff: bool = False) -> Tuple[TrainState, Dict[str, float]]:
+        marginalize_logprobs: bool = False, use_actor_diff: bool = False, use_actor_diff_mean: bool = False) -> Tuple[TrainState, Dict[str, float]]:
     dist, means, log_stds = actor.apply_fn({'params': actor.params}, batch['next_observations'])
     if marginalize_logprobs:
         next_actions, next_log_probs = dist.compute_marginalized_logprobs(means, log_stds, key=key)
     elif use_actor_diff:
         next_actions, next_log_probs = dist.sample_and_log_prob_diff(seed=key)
+    elif use_actor_diff_mean:
+        next_actions, next_log_probs, _, _ = dist.sample_and_log_prob_diff_mean(seed=key)
     else:
         next_actions, next_log_probs = dist.sample_and_log_prob(seed=key)
     next_qs = target_critic.apply_fn({'params': target_critic.params},
@@ -279,6 +281,7 @@ def update_noise_critic(
     batch: DatasetDict,
     noise_actions: jnp.ndarray,
     pi0_diffused_actions: jnp.ndarray,
+    only_predict_dims_until: int = 0,
 ) -> Tuple[TrainState, Dict[str, float]]:
     """Distil the NA critic into the noise critic using detached Pi0 actions."""
     diffused_actions = jax.lax.stop_gradient(pi0_diffused_actions)
@@ -296,8 +299,12 @@ def update_noise_critic(
         #         qs = qs.min(axis=0)
         #     elif critic_reduction == 'mean':
         #         qs = qs.mean(axis=0)
+        if only_predict_dims_until > 0:
+            _noise_actions = noise_actions[:, :, :only_predict_dims_until]
+        else:
+            _noise_actions = noise_actions
         noise_qs = noise_critic.apply_fn(
-            {'params': noise_critic_params}, batch['observations'], noise_actions
+            {'params': noise_critic_params}, batch['observations'], _noise_actions
         )
         distill_loss = 0.5*((qs - noise_qs) ** 2).mean()
         return distill_loss, {'distill_loss': distill_loss}

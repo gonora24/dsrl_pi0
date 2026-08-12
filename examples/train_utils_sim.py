@@ -340,7 +340,7 @@ def print_pre_update_summary(variant, agent):
     print("=" * 80)
 
 def offline_to_online_training_loop(variant, agent, env, eval_env, online_replay_buffer, replay_buffer, noise_mapping_distill_buffer, wandb_logger,
-                                       perform_control_evals=True, shard_fn=None, agent_dp=None):
+                                       perform_control_evals=True, shard_fn=None, agent_dp=None, start_step=0):
     replay_buffer_iterator = replay_buffer.get_iterator(variant.batch_size)
     if noise_mapping_distill_buffer is not None:
         noise_mapping_distill_buffer_iterator = noise_mapping_distill_buffer.get_iterator(variant.batch_size)
@@ -349,11 +349,13 @@ def offline_to_online_training_loop(variant, agent, env, eval_env, online_replay
 
     num_offline_steps = getattr(variant, 'num_offline_steps', 0)
     total_env_steps = 0
-    i = 0
+    i = start_step
+    if start_step > 0:
+        print(f'resuming training loop at step {start_step}', flush=True)
 
-    with tqdm(total=variant.max_steps, initial=0) as pbar:
+    with tqdm(total=variant.max_steps, initial=start_step) as pbar:
         print('performing evaluation for initial checkpoint')
-        perform_control_eval(agent, eval_env, 0, variant, wandb_logger, agent_dp)
+        perform_control_eval(agent, eval_env, i, variant, wandb_logger, agent_dp)
         # Phase 1: offline
         while i < num_offline_steps:
             print(f'offline update step: {i} started')
@@ -652,7 +654,8 @@ def collect_traj(variant, agent, env, i, agent_dp=None):
                     actions_noise = noise[0, :agent.action_chunk_shape[0], :]
             else:
                 actions_noise = agent.sample_actions(obs_dict, marginalize_logprobs=variant.marginalize_logprobs,
-                                                     use_actor_diff=getattr(variant, 'use_actor_diff', False))
+                                                     use_actor_diff=getattr(variant, 'use_actor_diff', False),
+                                                     use_actor_diff_mean=getattr(variant, 'use_actor_diff_mean', False))
                 if agent.only_predict_dims_until > 0 and not variant.num_noise_vectors > 1:
                     # Build full (1, H, 32) noise and embed the actor's 7-dim prediction
                     # into dims 0:only_predict_dims_until across all timesteps of the horizon.
@@ -831,6 +834,7 @@ def collect_traj_chunked(variant, agent, env, i, agent_dp=None, store_noise=Fals
                     obs_dict,
                     marginalize_logprobs=variant.marginalize_logprobs,
                     use_actor_diff=getattr(variant, 'use_actor_diff', False),
+                    use_actor_diff_mean=getattr(variant, 'use_actor_diff_mean', False),
                 )
                 noise = _prepare_pi0_noise(actions_noise, agent, variant.pi0_action_horizon)
 
@@ -1031,7 +1035,8 @@ def perform_control_eval(agent, env, i, variant, wandb_logger, agent_dp=None):
                     noise = jax.random.normal(rng, (1, variant.pi0_action_horizon, variant.dsrl_action_dim))
                 else:
                     actions_noise = agent.sample_actions(obs_dict, marginalize_logprobs=variant.marginalize_logprobs,
-                                                         use_actor_diff=getattr(variant, 'use_actor_diff', False))
+                                                         use_actor_diff=getattr(variant, 'use_actor_diff', False),
+                                                         use_actor_diff_mean=getattr(variant, 'use_actor_diff_mean', False))
                     if agent.only_predict_dims_until > 0 and variant.num_noise_vectors == 1:
                         # Build full (1, H, 32) noise and embed the actor's 7-dim prediction
                         # into dims 0:only_predict_dims_until across all timesteps of the horizon.

@@ -39,13 +39,14 @@ from jaxrl2.utils.target_update import soft_target_update
 class TrainState(train_state.TrainState):
     batch_stats: Any
 
-@functools.partial(jax.jit, static_argnames=('critic_reduction', 'color_jitter', 'aug_next', 'num_cameras', 'chunk_reward', 'marginalize_logprobs', 'use_actor_diff', 'freeze_residual_steps'))
+@functools.partial(jax.jit, static_argnames=('critic_reduction', 'color_jitter', 'aug_next', 'num_cameras', 'chunk_reward', 'marginalize_logprobs', 'use_actor_diff', 'use_actor_diff_mean', 'freeze_residual_steps'))
 def _update_jit(
     rng: PRNGKey, actor: TrainState, critic: TrainState,
     target_critic_params: Params, temp: TrainState, batch: TrainState,
     discount: float, tau: float, target_entropy: float,
     critic_reduction: str, color_jitter: bool, aug_next: bool, num_cameras: int,
     chunk_reward: bool, marginalize_logprobs: bool, use_actor_diff: bool,
+    use_actor_diff_mean: bool,
     freeze_residual_steps: int,
 ) -> Tuple[PRNGKey, TrainState, TrainState, Params, TrainState, Dict[str,float]]:
     aug_pixels = batch['observations']['pixels']
@@ -84,11 +85,11 @@ def _update_jit(
     target_critic = critic.replace(params=target_critic_params)
     new_critic, critic_info = update_critic(
         key, actor, critic, target_critic, temp, batch, discount,
-        critic_reduction=critic_reduction, chunk_reward=chunk_reward, marginalize_logprobs=marginalize_logprobs, use_actor_diff=use_actor_diff)
+        critic_reduction=critic_reduction, chunk_reward=chunk_reward, marginalize_logprobs=marginalize_logprobs, use_actor_diff=use_actor_diff, use_actor_diff_mean=use_actor_diff_mean)
     new_target_critic_params = soft_target_update(new_critic.params, target_critic_params, tau)
     
     key, rng = jax.random.split(rng)
-    new_actor, actor_info = update_actor(key, actor, new_critic, temp, batch, critic_reduction=critic_reduction, marginalize_logprobs=marginalize_logprobs, use_actor_diff=use_actor_diff, freeze_residual_steps=freeze_residual_steps)
+    new_actor, actor_info = update_actor(key, actor, new_critic, temp, batch, critic_reduction=critic_reduction, marginalize_logprobs=marginalize_logprobs, use_actor_diff=use_actor_diff, use_actor_diff_mean=use_actor_diff_mean, freeze_residual_steps=freeze_residual_steps)
     new_temp, alpha_info = update_temperature(temp, actor_info['entropy'], target_entropy)
 
     return rng, new_actor, new_critic, new_target_critic_params, new_temp, {
@@ -150,6 +151,7 @@ class PixelSACLearner(Agent):
                  clip_critic_grad_norm: float = 0.0,
                  marginalize_logprobs: bool = False,
                  use_actor_diff: bool = False,
+                 use_actor_diff_mean: bool = False,
                  freeze_residual_steps: int = 0,
                  num_noise_vectors: int = 1,
                  noise_repeats_per_vector: int = 1,
@@ -254,6 +256,7 @@ class PixelSACLearner(Agent):
         self.chunk_reward = chunk_reward
         self.marginalize_logprobs = marginalize_logprobs
         self.use_actor_diff = use_actor_diff
+        self.use_actor_diff_mean = use_actor_diff_mean
         self.freeze_residual_steps = freeze_residual_steps
         self.interpolate_noise_vectors = interpolate_noise_vectors
         self.only_predict_dims_until = only_predict_dims_until
@@ -308,7 +311,9 @@ class PixelSACLearner(Agent):
                 log_std_max=2,
                 low=-action_magnitude,
                 high=action_magnitude,
+                use_actor_diff_mean=use_actor_diff_mean,
             )
+
         else:
             policy_def = LearnedStdTanhNormalPolicy(
                 hidden_dims,
@@ -459,13 +464,14 @@ class PixelSACLearner(Agent):
             'transformer_n_layer': transformer_n_layer,
             'transformer_use_bias': transformer_use_bias,
             'transformer_weight_norm': transformer_weight_norm,
+            'use_actor_diff_mean': use_actor_diff_mean,
         }
         
 
     def update(self, batch: FrozenDict) -> Dict[str, float]:
         new_rng, new_actor, new_critic, new_target_critic, new_temp, info = _update_jit(
             self._rng, self._actor, self._critic, self._target_critic_params, self._temp, batch, self.discount, self.tau, self.target_entropy, 
-            self.critic_reduction, self.color_jitter, self.aug_next, self.num_cameras, self.chunk_reward, self.marginalize_logprobs, self.use_actor_diff, self.freeze_residual_steps
+            self.critic_reduction, self.color_jitter, self.aug_next, self.num_cameras, self.chunk_reward, self.marginalize_logprobs, self.use_actor_diff, self.use_actor_diff_mean, self.freeze_residual_steps
             )
 
         self._rng = new_rng
@@ -598,7 +604,7 @@ class PixelSACLearner(Agent):
             print(f'warm-started critic from {baseline_ckpt_path}')
 
     @classmethod
-    def restore_from_checkpoint_dir(cls, ckpt_dir: str, seed: int = 0) -> 'PixelSACLearner':
+    def restore_from_checkpoint_dir(cls, ckpt_dir: str, seed: int = 0, extra_args: Dict[str, Any] = {}) -> 'PixelSACLearner':
         """Reconstruct a PixelSACLearner from a checkpoint directory.
 
         Reads the companion ``checkpoint{step}_config.json`` written by
@@ -663,6 +669,7 @@ class PixelSACLearner(Agent):
             use_chunk_actor_transformer=cfg['use_chunk_actor_transformer'],
             marginalize_logprobs=cfg['marginalize_logprobs'],
             use_actor_diff=cfg['use_actor_diff'],
+            use_actor_diff_mean=cfg['use_actor_diff_mean'],
             num_qs=cfg['num_qs'],
             critic_hidden_dims=tuple(cfg['critic_hidden_dims']),
             use_transformer_critic=cfg['use_transformer_critic'],
@@ -671,6 +678,7 @@ class PixelSACLearner(Agent):
             transformer_n_layer=cfg['transformer_n_layer'],
             transformer_use_bias=cfg['transformer_use_bias'],
             transformer_weight_norm=cfg['transformer_weight_norm'],
+            **extra_args
         )
         agent.restore_checkpoint(ckpt_dir)
         return agent

@@ -315,6 +315,13 @@ class ReplayBuffer(Dataset):
                         else:
                             next_actions = actions[t:t + Q]
 
+                        # Zero out the bootstrap mask if the episode terminates anywhere
+                        # inside this window, not just at its first step. Otherwise the
+                        # final overlapping window of a trajectory (which contains the
+                        # true terminal step but usually not at index t) would incorrectly
+                        # bootstrap past the end of the episode.
+                        window_mask = 0.0 if terminations[t:t + Q].any() else 1.0
+
                         self.insert({
                             'observations': obs,
                             'next_observations': next_obs,
@@ -322,7 +329,7 @@ class ReplayBuffer(Dataset):
                             'next_actions': next_actions,
                             'rewards': rewards[t:t + Q],
                             'terminations': terminations[t:t + Q],
-                            'masks': masks[t],
+                            'masks': window_mask,
                             'discount': chunk_discount,
                         })
 

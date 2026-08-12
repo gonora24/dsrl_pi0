@@ -203,6 +203,11 @@ def main(variant):
     sharding = jax.sharding.PositionalSharding(devices)
     shard_fn = partial(shard_batch, sharding=sharding)
 
+    assert not (variant.use_actor_diff_mean and variant.use_actor_diff), \
+        "use_actor_diff_mean and use_actor_diff cannot be used together"
+    assert not (variant.use_actor_diff_mean and variant.marginalize_logprobs), \
+        "use_actor_diff_mean and marginalize_logprobs cannot be used together"
+
     # prevent tensorflow from using GPUs
     tf.config.set_visible_devices([], "GPU")
     
@@ -376,6 +381,9 @@ def main(variant):
             transformer_n_layer=variant.transformer_n_layer,
             transformer_weight_norm=variant.transformer_weight_norm,
             transformer_use_bias=variant.transformer_use_bias,
+            freeze_latent_models=variant.freeze_latent_models,
+            only_predict_dims_until=variant.only_predict_dims_until,
+            backup_entropy=bool(variant.backup_entropy),
             **train_kwargs,
         )
     else:
@@ -406,6 +414,7 @@ def main(variant):
             marginalize_logprobs=variant.marginalize_logprobs,
             use_chunk_actor_transformer=variant.use_chunk_actor_transformer,
             use_actor_diff=variant.use_actor_diff,
+            use_actor_diff_mean=variant.use_actor_diff_mean,
             freeze_residual_steps=variant.freeze_residual_steps,
             num_noise_vectors=getattr(variant, 'num_noise_vectors', 1),
             noise_repeats_per_vector=getattr(variant, 'noise_repeats_per_vector', 1),
@@ -458,7 +467,11 @@ def main(variant):
     replay_buffer = online_replay_buffer
     replay_buffer.seed(variant.seed)
     if variant.algorithm == 'dsrl_na':
-        offline_to_online_training_loop(variant, agent, env, eval_env, online_replay_buffer, replay_buffer, noise_mapping_distill_buffer, wandb_logger, shard_fn=shard_fn, agent_dp=agent_dp)
+        # If we restored from a checkpoint, continue the step count (and
+        # therefore checkpoint/wandb numbering and the offline/online phase
+        # boundary) from where that run left off instead of restarting at 0.
+        start_step = agent._step if getattr(variant, 'restore_path', None) is not None else 0
+        offline_to_online_training_loop(variant, agent, env, eval_env, online_replay_buffer, replay_buffer, noise_mapping_distill_buffer, wandb_logger, shard_fn=shard_fn, agent_dp=agent_dp, start_step=start_step)
     else:
         trajwise_alternating_training_loop(variant, agent, env, eval_env, online_replay_buffer, replay_buffer, wandb_logger, shard_fn=shard_fn, agent_dp=agent_dp)
  

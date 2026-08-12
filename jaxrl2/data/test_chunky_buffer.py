@@ -594,5 +594,102 @@ class TestBuildChunkedInsertTrajNoiseMode:
         assert buffer.data["actions"].shape == (buffer.capacity, H, D)
 
 
+def _make_chunk_reward_buffer(obs_dim, action_dim, Q, capacity):
+    """Buffer shaped like DummyEnv's dsrl_na + chunk_reward action space:
+    actions/next_actions are (Q, action_dim) chunks, not flat vectors.
+    """
+    obs_space = gym.spaces.Dict(
+        {
+            "pixels": gym.spaces.Box(low=0, high=255, shape=(obs_dim,), dtype=np.uint8),
+            "state": gym.spaces.Box(low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32),
+        }
+    )
+    action_space = gym.spaces.Box(low=-1, high=1, shape=(Q, action_dim), dtype=np.float32)
+    return ReplayBuffer(
+        observation_space=obs_space,
+        action_space=action_space,
+        capacity=capacity,
+        chunk_size=Q,
+    )
+
+
+def _write_chunk_reward_hdf5(path, T, done_at, obs_dim=3, action_dim=2):
+    """Write a single-demo HDF5 file in the format load_from_hdf5 expects.
+
+    Termination fires at step `done_at` (0-indexed into the T-step episode).
+    """
+    import h5py
+
+    pixels = np.repeat(np.arange(T + 1, dtype=np.uint8)[:, None], obs_dim, axis=1)
+    state = pixels.astype(np.float32)
+    actions = np.arange(T * action_dim, dtype=np.float32).reshape(T, action_dim)
+    terminations = np.zeros(T, dtype=np.bool_)
+    terminations[done_at] = True
+    rewards = np.where(terminations, 0.0, -1.0).astype(np.float32)
+    masks = np.logical_not(terminations).astype(np.float32)
+
+    with h5py.File(path, "w") as f:
+        data_grp = f.create_group("data")
+        demo = data_grp.create_group("demo_0")
+        obs_grp = demo.create_group("obs")
+        obs_grp.create_dataset("pixels", data=pixels)
+        obs_grp.create_dataset("state", data=state)
+        demo.create_dataset("actions", data=actions)
+        demo.create_dataset("rewards", data=rewards)
+        demo.create_dataset("terminations", data=terminations)
+        demo.create_dataset("masks", data=masks)
+
+
+class TestLoadFromHdf5ChunkRewardMasks:
+    """Regression tests for the overlapping-window mask computation in
+    ReplayBuffer.load_from_hdf5's chunk_reward branch (see replay_buffer.py).
+    """
+
+    def test_mask_zero_for_window_containing_terminal_step(self):
+        # T=10, Q=4 -> 7 overlapping windows (t = 0..6). done_at=9 (the very
+        # last step) only falls inside the *last* window (t=6, covering steps
+        # 6..9); masks[t] for t=6 is 1.0 (not terminal at t=6 itself), so the
+        # old buggy code (`masks[t]`) would incorrectly report mask=1.0 there.
+        T, Q, done_at, obs_dim, action_dim = 10, 4, 9, 3, 2
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = f"{tmpdir}/traj.hdf5"
+            _write_chunk_reward_hdf5(path, T, done_at, obs_dim, action_dim)
+
+            buffer = _make_chunk_reward_buffer(obs_dim, action_dim, Q, capacity=32)
+            buffer.load_from_hdf5(path, chunk_reward=True, query_freq=Q, discount=0.99)
+
+            num_windows = T - Q + 1
+            assert buffer.size == num_windows
+
+            for t in range(num_windows):
+                expected_mask = 0.0 if t <= done_at < t + Q else 1.0
+                assert buffer.data["masks"][t] == expected_mask, (
+                    f"window t={t}: expected mask {expected_mask}, "
+                    f"got {buffer.data['masks'][t]}"
+                )
+            # Sanity check: exactly the last window should be affected here.
+            assert buffer.data["masks"][num_windows - 1] == 0.0
+            assert np.all(buffer.data["masks"][: num_windows - 1] == 1.0)
+
+    def test_mask_zero_for_every_window_overlapping_terminal_step(self):
+        # done_at in the middle of the episode: every window whose range
+        # [t, t+Q) covers done_at should get mask=0.0, not just the last one.
+        T, Q, done_at, obs_dim, action_dim = 12, 4, 6, 3, 2
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = f"{tmpdir}/traj.hdf5"
+            _write_chunk_reward_hdf5(path, T, done_at, obs_dim, action_dim)
+
+            buffer = _make_chunk_reward_buffer(obs_dim, action_dim, Q, capacity=32)
+            buffer.load_from_hdf5(path, chunk_reward=True, query_freq=Q, discount=0.99)
+
+            num_windows = T - Q + 1
+            for t in range(num_windows):
+                expected_mask = 0.0 if t <= done_at < t + Q else 1.0
+                assert buffer.data["masks"][t] == expected_mask, (
+                    f"window t={t}: expected mask {expected_mask}, "
+                    f"got {buffer.data['masks'][t]}"
+                )
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

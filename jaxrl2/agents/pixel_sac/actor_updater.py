@@ -23,7 +23,7 @@ def _maybe_freeze_residual(grads, step, freeze_steps):
 
 
 def update_actor(key: PRNGKey, actor: TrainState, critic: TrainState,
-                 temp: TrainState, batch: DatasetDict, cross_norm:bool=False, critic_reduction:str='min', marginalize_logprobs:bool=False, use_actor_diff:bool=False, freeze_residual_steps:int=0) -> Tuple[TrainState, Dict[str, float]]:
+                 temp: TrainState, batch: DatasetDict, cross_norm:bool=False, critic_reduction:str='min', marginalize_logprobs:bool=False, use_actor_diff:bool=False, use_actor_diff_mean:bool=False, freeze_residual_steps:int=0) -> Tuple[TrainState, Dict[str, float]]:
     
     key, key_act, key_dropout = jax.random.split(key, num=3)
 
@@ -52,6 +52,8 @@ def update_actor(key: PRNGKey, actor: TrainState, critic: TrainState,
             actions, log_probs = dist.compute_marginalized_logprobs(means, log_stds, key=key_act)
         elif use_actor_diff:
             actions, log_probs = dist.sample_and_log_prob_diff(seed=key_act)
+        elif use_actor_diff_mean:
+            actions, log_probs, residual_mean, residual_std = dist.sample_and_log_prob_diff_mean(seed=key_act)
         else:
             actions, log_probs = dist.sample_and_log_prob(seed=key_act)
 
@@ -98,6 +100,13 @@ def update_actor(key: PRNGKey, actor: TrainState, critic: TrainState,
             things_to_log['residual_std'] = residual.std(axis=1).mean()
             things_to_log['residual_min'] = residual.min(axis=1).mean()
             things_to_log['residual_max'] = residual.max(axis=1).mean()
+        if use_actor_diff_mean:
+            things_to_log['residual_mean_mean'] = residual_mean.mean()
+            things_to_log['residual_std_mean'] = residual_std.mean()
+            things_to_log['residual_mean_min'] = residual_mean.min(axis=1).mean()
+            things_to_log['residual_mean_max'] = residual_mean.max(axis=1).mean()
+            things_to_log['residual_std_min'] = residual_std.min(axis=1).mean()
+            things_to_log['residual_std_max'] = residual_std.max(axis=1).mean()
         return actor_loss, (things_to_log, new_model_state)
 
     grads, (info, new_model_state) = jax.grad(actor_loss_fn, has_aux=True)(actor.params)

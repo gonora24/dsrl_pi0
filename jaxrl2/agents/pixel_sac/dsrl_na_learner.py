@@ -40,7 +40,7 @@ class TrainState(train_state.TrainState):
 
 @functools.partial(
     jax.jit,
-    static_argnames=('critic_reduction', 'marginalize_logprobs', 'use_actor_diff'),
+    static_argnames=('critic_reduction', 'marginalize_logprobs', 'use_actor_diff', 'frozen', 'only_predict_dims_until', 'backup_entropy'),
 )
 def _update_jit(
     actor_key: PRNGKey, actor: TrainState, noise_critic: TrainState,
@@ -50,30 +50,45 @@ def _update_jit(
     noise_actions: jnp.ndarray, pi0_diffused_actions: jnp.ndarray,
     discount: float, tau: float, target_entropy: float,
     critic_reduction: str, marginalize_logprobs: bool, use_actor_diff: bool,
+    frozen: bool, only_predict_dims_until: int,
+    backup_entropy: bool,
 ) -> Tuple[TrainState, TrainState, TrainState, Params, TrainState, Dict[str, float]]:
     target_na_critic = na_critic.replace(params=target_na_critic_params)
     new_na_critic, na_critic_info = update_na_critic(
         na_critic, target_na_critic, temp, batch_train, pi0_next_actions,
-        next_log_probs, discount, critic_reduction=critic_reduction,
+        next_log_probs, discount, backup_entropy=backup_entropy, critic_reduction=critic_reduction,
     )
     new_target_na_critic_params = soft_target_update(new_na_critic.params, target_na_critic_params, tau)
-    new_actor, actor_info = update_actor(
-        actor_key, actor, noise_critic, temp, batch_train,
-        critic_reduction=critic_reduction,
-        marginalize_logprobs=marginalize_logprobs,
-        use_actor_diff=use_actor_diff,
-    )
-    new_temp, alpha_info = update_temperature(temp, actor_info['entropy'], target_entropy)
-    new_noise_critic, noise_critic_info = update_noise_critic(
-        new_na_critic, noise_critic, batch_distill, noise_actions,
-        pi0_diffused_actions,
-    )
+    if not frozen:
+        new_actor, actor_info = update_actor(
+            actor_key, actor, noise_critic, temp, batch_train,
+            critic_reduction=critic_reduction,
+            marginalize_logprobs=marginalize_logprobs,
+            use_actor_diff=use_actor_diff,
+        )
+        new_temp, alpha_info = update_temperature(temp, actor_info['entropy'], target_entropy)
+        new_noise_critic, noise_critic_info = update_noise_critic(
+            new_na_critic, noise_critic, batch_distill, noise_actions,
+            pi0_diffused_actions, only_predict_dims_until=only_predict_dims_until,
+        )
+    else:
+        new_actor = actor
+        new_noise_critic = noise_critic
+        new_temp = temp
+        noise_critic_info = {}
+        actor_info = {}
+        alpha_info = {}
     return new_actor, new_noise_critic, new_na_critic, new_target_na_critic_params, new_temp, {
         **noise_critic_info,
         **na_critic_info,
         **actor_info,
         **alpha_info
     }
+
+def _count_params(params) -> int:
+    """Return the total number of scalar parameters in a Flax param tree."""
+    return sum(x.size for x in jax.tree_util.tree_leaves(params))
+
 
 def prepare_batch(batch: DatasetDict, color_jitter: bool, aug_next: bool, num_cameras: int, rng: PRNGKey) -> DatasetDict:
     aug_pixels = batch['observations']['pixels']
@@ -177,6 +192,8 @@ class DSRLNALearner(Agent):
                  agent_dp: Policy = None,
                  pi0_microbatch_size: int = 0,
                  only_predict_dims_until: int = 0,
+                 freeze_latent_models: int = 0,
+                 backup_entropy: bool = False,
     ):
         self.aug_next=aug_next
         self.color_jitter = color_jitter
@@ -191,16 +208,29 @@ class DSRLNALearner(Agent):
         self.dsrl_action_dim = dsrl_action_dim
         self.pi0_microbatch_size = pi0_microbatch_size
         self._logged_update_boundaries = False
+        self._step = 0
         self.only_predict_dims_until = only_predict_dims_until
-        if use_chunky_actor_critic:
+        self.backup_entropy = backup_entropy
+        if use_chunky_actor_critic and only_predict_dims_until == -1:
+            # Normal chunky mode
             self.action_horizon = pi0_action_horizon
             self.action_chunk_shape = (pi0_action_horizon, dsrl_action_dim)
             self.action_dim = dsrl_action_dim * pi0_action_horizon
+            self.noise_repeats_per_vector = 1
+            _critic_is_chunky = True
+        elif only_predict_dims_until > 0:
+            # Repeat mode with only predicting the first N dimensions
+            self.action_horizon = 1
+            self.action_chunk_shape = (1, only_predict_dims_until)
+            self.action_dim = only_predict_dims_until
+            self.noise_repeats_per_vector = 1
+            _critic_is_chunky = False
+            print(f'Repeat mode with only predicting the first {only_predict_dims_until} dimensions', flush=True)
         else:
             self.action_horizon = 1
             self.action_chunk_shape = (1, dsrl_action_dim)
             self.action_dim = dsrl_action_dim
-
+        self.freeze_latent_models = freeze_latent_models
         rng = jax.random.PRNGKey(seed)
         rng, noise_actor_key, noise_critic_key, critic_key, temp_key = jax.random.split(rng, 5)
 
@@ -249,7 +279,7 @@ class DSRLNALearner(Agent):
         noise_critic_net = StateActionEnsemble(
                 critic_hidden_dims,
                 num_qs=num_qs,
-                use_chunky_actor_critic=use_chunky_actor_critic,
+                use_chunky_actor_critic=_critic_is_chunky,
             )
         noise_critic_def = PixelMultiplexer(encoder=encoder_def,
                                       network=noise_critic_net,
@@ -343,6 +373,12 @@ class DSRLNALearner(Agent):
         print(f'use_chunky_actor_critic: {self.use_chunky_actor_critic}')
         print(f'noise_action_chunk_shape: {self.action_chunk_shape}')
         print(self.critic_reduction)
+        print(f'[params] noise_actor:   {_count_params(noise_actor_params):>12,}')
+        print(f'[params] noise_critic:  {_count_params(noise_critic_params):>12,}')
+        print(f'[params] na_critic:     {_count_params(na_critic_params):>12,}')
+        print(f'[params] temperature:   {_count_params(temp_params):>12,}')
+        if freeze_latent_models > 0:
+            print(f'[freeze] noise_actor + noise_critic + temp frozen for first {freeze_latent_models} steps; only na_critic will be optimized.')
 
         # Config saved alongside checkpoints so they can be restored without
         # re-specifying hyperparameters (see restore_from_checkpoint_dir).
@@ -379,6 +415,12 @@ class DSRLNALearner(Agent):
             'transformer_n_layer': transformer_n_layer,
             'transformer_use_bias': transformer_use_bias,
             'transformer_weight_norm': transformer_weight_norm,
+            'freeze_latent_models': freeze_latent_models,
+            'only_predict_dims_until': only_predict_dims_until,
+            'action_dim': self.action_dim,
+            'action_chunk_shape': self.action_chunk_shape,
+            'step': self._step,
+            'backup_entropy': self.backup_entropy,
         }
 
     def _infer_pi0_actions(
@@ -432,12 +474,33 @@ class DSRLNALearner(Agent):
 
         target_key, rng = jax.random.split(self._rng)
         actor_key, noise_key = jax.random.split(rng)
-        target_noise, next_log_probs = _sample_target_noise_and_log_probs(self._actor, batch_train['next_observations'], target_key, self.marginalize_logprobs, self.use_actor_diff)
+        if self.only_predict_dims_until > 0:
+            self.original_action_dsrl_action_dim = 32
+            _batch_size = batch_train['actions'].shape[0]
+            bg_noise_key, actor_sample_key = jax.random.split(target_key)
+            next_actor_noise, next_log_probs = _sample_target_noise_and_log_probs(
+                self._actor, batch_train['next_observations'], actor_sample_key,
+                self.marginalize_logprobs, self.use_actor_diff)
+            target_noise = jax.random.normal(
+                bg_noise_key,
+                (_batch_size, self.agent_dp.action_horizon, self.original_action_dsrl_action_dim),
+            )
+            target_noise = target_noise.at[:, :, :self.only_predict_dims_until].set(
+                next_actor_noise[:, None, :]
+            )
+        else:
+            target_noise, next_log_probs = _sample_target_noise_and_log_probs(self._actor, batch_train['next_observations'], target_key, self.marginalize_logprobs, self.use_actor_diff)
         if log_boundaries:
             print("DSRL-NA update: running target Pi0 inference", flush=True)
         pi0_next_actions = self._infer_pi0_actions(batch_train['next_observations'], target_noise, env, task_description, int(batch_train['actions'].shape[-1]))
 
         if use_noise_mapping_distill:
+            # noise_actions stays (batch, pi0_action_horizon, 32) here; update_noise_critic
+            # slices to [:, :, :only_predict_dims_until] and the (non-chunky) noise_critic's
+            # _prepare_critic_actions then takes the LAST timestep as the representative
+            # vector. With --repeat_noise-collected mapping data all timesteps are already
+            # identical (the same vector tiled across the horizon), so "last timestep"
+            # correctly recovers that single vector -- no extra reduction needed here.
             noise_actions = batch_distill['noise']
             pi0_diffused_actions = batch_distill['actions']
         else:
@@ -450,6 +513,22 @@ class DSRLNALearner(Agent):
 
         if log_boundaries:
             print("DSRL-NA update: starting compiled actor/critic update", flush=True)
+        frozen = self._step < self.freeze_latent_models
+        print(f'self._step: {self._step}')
+        if self._step == 0:
+            optimized = 'na_critic only' if frozen else 'noise_actor + noise_critic + na_critic + temp'
+            print(
+                f'[step {self._step}] freeze_mode={frozen} => optimizing: {optimized} '
+                f'({_count_params(self._na_critic.params):,} params)',
+                flush=True,
+            )
+        elif self._step == self.freeze_latent_models:
+            print(
+                f'[step {self._step}] unfreezing noise_actor ({_count_params(self._actor.params):,} params), '
+                f'noise_critic ({_count_params(self._noise_critic.params):,} params), '
+                f'temp ({_count_params(self._temp.params):,} params) — all models now optimized.',
+                flush=True,
+            )
         new_noise_actor, new_noise_critic, new_na_critic, new_target_na_critic, new_temp, info = _update_jit(
             actor_key,
             self._actor,
@@ -469,7 +548,11 @@ class DSRLNALearner(Agent):
             self.critic_reduction,
             self.marginalize_logprobs,
             self.use_actor_diff,
+            frozen,
+            self.only_predict_dims_until,
+            self.backup_entropy,
         )
+        self._step += 1
 
         self._rng = noise_key
         self._actor = new_noise_actor
@@ -529,7 +612,12 @@ class DSRLNALearner(Agent):
             'na_critic': self._na_critic,
             'target_na_critic_params': self._target_na_critic_params,
             'actor': self._actor,
-            'temp': self._temp
+            'temp': self._temp,
+            # Needed to correctly resume training: without these, a restored
+            # agent restarts freeze_latent_models gating from scratch and
+            # replays the exact same RNG stream a fresh run would produce.
+            'step': self._step,
+            'rng': self._rng,
         }
         return save_dict
 
@@ -544,12 +632,31 @@ class DSRLNALearner(Agent):
 
     def restore_checkpoint(self, dir):
         assert pathlib.Path(dir).exists(), f"Checkpoint {dir} does not exist."
+        # Peek at the raw (unstructured) checkpoint contents first so we can
+        # tell whether this is an older checkpoint saved before `step`/`rng`
+        # were tracked -- flax silently keeps the template's default value
+        # for any target key missing from the file, so this is purely for
+        # an informative warning, not required for correctness.
+        raw = checkpoints.restore_checkpoint(dir, target=None)
+        has_step = isinstance(raw, dict) and 'step' in raw
+        has_rng = isinstance(raw, dict) and 'rng' in raw
+
         output_dict = checkpoints.restore_checkpoint(dir, self._save_dict)
         self._actor = output_dict['actor']
         self._noise_critic = output_dict['noise_critic']
         self._na_critic = output_dict['na_critic']
         self._target_na_critic_params = output_dict['target_na_critic_params']
         self._temp = output_dict['temp']
+        self._step = int(output_dict['step'])
+        self._rng = output_dict['rng']
+        if not has_step or not has_rng:
+            print(
+                f'[restore_checkpoint] {dir} predates `step`/`rng` tracking; '
+                f'resuming with step={self._step} and a freshly-seeded rng. '
+                'freeze_latent_models gating and the RNG stream will not '
+                'exactly continue the original run.',
+                flush=True,
+            )
         print('restored from ', dir)
 
     @classmethod
@@ -618,14 +725,16 @@ class DSRLNALearner(Agent):
             use_chunk_actor_transformer=cfg['use_chunk_actor_transformer'],
             marginalize_logprobs=cfg['marginalize_logprobs'],
             use_actor_diff=cfg['use_actor_diff'],
-            num_qs=cfg['num_qs'],
+            num_qs=cfg['num_q_heads_noise'],
             critic_hidden_dims=tuple(cfg['critic_hidden_dims']),
-            use_transformer_critic=cfg['use_transformer_critic'],
             transformer_n_embd=cfg['transformer_n_embd'],
             transformer_n_head=cfg['transformer_n_head'],
             transformer_n_layer=cfg['transformer_n_layer'],
             transformer_use_bias=cfg['transformer_use_bias'],
             transformer_weight_norm=cfg['transformer_weight_norm'],
+            only_predict_dims_until=cfg['only_predict_dims_until'],
+            freeze_latent_models=cfg['freeze_latent_models'],
+            backup_entropy=cfg.get('backup_entropy', False),
         )
         agent.restore_checkpoint(ckpt_dir)
         return agent

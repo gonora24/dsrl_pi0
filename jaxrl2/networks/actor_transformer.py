@@ -151,6 +151,11 @@ class AutoregressiveDistribution:
             self._variables, self._context, seed, training=self._training
         )
 
+    def sample_and_log_prob_diff_mean(self, *, seed):
+        return self._module.ar_sample_diff_mean(
+            self._variables, self._context, seed, training=self._training
+        )
+
     def sample(self, *, seed):
         actions, _ = self._module.ar_sample(
             self._variables, self._context, seed, training=self._training
@@ -181,6 +186,7 @@ class AutoregressiveActorTransformer(nn.Module):
     log_std_max: float = 2.0
     low: Optional[float] = None
     high: Optional[float] = None
+    use_actor_diff_mean: bool = False
 
     def setup(self):
         self.context_proj = nn.Dense(self.d_model, use_bias=False)
@@ -202,6 +208,7 @@ class AutoregressiveActorTransformer(nn.Module):
             kernel_init=nn.initializers.zeros,
             bias_init=nn.initializers.zeros,
         )
+        self.residual_mean_std_out = nn.Dense(self.action_dim * 2, kernel_init=nn.initializers.zeros, bias_init=nn.initializers.zeros)
 
     def _empty_kv_cache(self, batch_size: int, dtype) -> tuple:
         """Pre-allocated per-layer (k, v) caches: [B, n_heads, chunk_size+1, head_dim]."""
@@ -244,6 +251,11 @@ class AutoregressiveActorTransformer(nn.Module):
     def _residual_head(self, h: jnp.ndarray) -> jnp.ndarray:
         return jnp.tanh(self.residual_out(h))   # [B, action_dim]
 
+    def _residual_mean_std_head(self, h: jnp.ndarray) -> jnp.ndarray:
+        out = self.residual_mean_std_out(h)
+        residual_mean, residual_std = jnp.split(out, 2, axis=-1)
+        return residual_mean, residual_std   # [B, action_dim]
+
     def _pos_embed(self, idx: jnp.ndarray) -> jnp.ndarray:
         """Look up positional embedding(s). idx: integer or [K] array."""
         return self.pos_embed(idx)
@@ -255,10 +267,16 @@ class AutoregressiveActorTransformer(nn.Module):
 
         features = jnp.concatenate([state_features, image_features], axis=-1)
         context = self.context_proj(features)[:, None, :]
-        dummy_action = jnp.zeros(
-            (context.shape[0], self.action_dim),
-            dtype=context.dtype
-        )
+        if self.use_actor_diff_mean:
+            dummy_action = jnp.zeros(
+                (context.shape[0], self.action_dim * 2),
+                dtype=context.dtype
+            )
+        else:
+            dummy_action = jnp.zeros(
+                (context.shape[0], self.action_dim),
+                dtype=context.dtype
+            )
         _ = self._embed_action(dummy_action)
 
         # seq_embed = jnp.concatenate([context, dummy_action], axis=1)
@@ -275,6 +293,7 @@ class AutoregressiveActorTransformer(nn.Module):
             x, training=training, kv_cache=kv_cache, cache_len=jnp.int32(0)
         )
         residual = self._residual_head(h[:, -1])
+        residual_mean, residual_std = self._residual_mean_std_head(h[:, -1])
         loc, log_std, scale = self._head(h[:, -1])
 
         variables = self.variables
@@ -329,7 +348,6 @@ class AutoregressiveActorTransformer(nn.Module):
             )
             action, log_prob = dist.sample_and_log_prob(seed=action_rng)               # [B, action_dim]
             # log_prob = dist.log_prob(action)                     # [B]
-
             # Korrekte Methode für action embedding
             new_token = self.apply(
                 variables, action, method=self._embed_action
@@ -452,3 +470,103 @@ class AutoregressiveActorTransformer(nn.Module):
         else:
             log_probs = log_probs.sum(axis=0)               # [B], only step-0 non-zero
         return actions, log_probs
+
+    def ar_sample_diff_mean(
+        self,
+        variables,
+        context,
+        rng,
+        training: bool = False,
+        per_step_log_probs: bool = False,
+    ):
+        """Autoregressive mean predictor via jax.lax.scan.
+
+        Step 0: sample a_0 ~ TanhNormal(_head(h)); record log_prob.
+        Steps 1..T-1: residual r_t = _residual_head(h);
+                      cumulative += r_t; log_prob contribution = 0.
+        """
+        B = context.shape[0]
+        T = self.chunk_size
+
+        buf = jnp.zeros((B, T + 1, self.d_model))
+        buf = buf.at[:, :1, :].set(context)
+        kv_cache = self._empty_kv_cache(B, context.dtype)
+        cache_len = jnp.int32(0)
+        new_params = jnp.zeros((B, self.action_dim*2), dtype=context.dtype)
+
+        def step(carry, t):
+            buf, kv_cache, cache_len, rng, new_params = carry
+            rng, dropout_rng = jax.random.split(rng, 2)
+
+            mask = jnp.arange(T + 1)[None, None, None, :] <= t
+            mask = jnp.broadcast_to(mask, (B, 1, 1, T + 1))
+            token = jax.lax.dynamic_slice(
+                buf,
+                start_indices=(0, t, 0),
+                slice_sizes=(B, 1, self.d_model),
+            )
+
+            h, kv_cache, cache_len = self.apply(
+                variables,
+                tokens=token,
+                method=self._forward_tokens,
+                kv_cache=kv_cache,
+                cache_len=cache_len,
+                training=training,
+                mask=mask,
+                rngs={'dropout': dropout_rng},
+            )
+            h_last = h[:, -1, :]
+
+            # first step: get mean and std
+            def first_step(_):
+                mu, log_std, _ = self.apply(variables, h_last, method=self._head)
+                return jnp.concatenate([mu, log_std], axis=-1)
+
+            # subsequent steps: get mean and std of residual
+            def residual_step(_):
+                residual_mean, residual_log_std = self.apply(variables, h_last, method=self._residual_mean_std_head)
+                mu, log_std = jnp.split(new_params, 2, axis=-1)
+                mu = mu + residual_mean
+                log_std = log_std + residual_log_std
+                log_std = jnp.clip(log_std, self.log_std_min, self.log_std_max)
+                return jnp.concatenate([mu, log_std], axis=-1)
+
+            new_params = jax.lax.cond(
+                t == 0,
+                first_step,
+                residual_step,
+                None,
+            )
+            new_token = self.apply(variables, new_params, method=self._embed_action)
+
+            pos_embed = self.apply(variables, jnp.array([t + 1]), method=self._pos_embed)
+            new_token = new_token + pos_embed[0]
+
+            buf_new = jax.lax.dynamic_update_slice(
+                buf,
+                new_token[:, None, :],
+                jnp.array([0, t + 1, 0]),
+            )
+
+            return (buf_new, kv_cache, cache_len, rng, new_params), (new_params)
+
+        (_, _, _, _, _), (params) = jax.lax.scan(
+            step,
+            (buf, kv_cache, cache_len, rng, new_params),
+            jnp.arange(T),
+        )
+        params = jnp.split(params, 2, axis=-1)
+        dist = TanhMultivariateNormalDiag(
+            loc=params[0],
+            scale_diag=jnp.exp(params[1]),
+            low=jnp.array(self.low),
+            high=jnp.array(self.high),
+        )
+        actions, log_probs = dist.sample_and_log_prob(seed=rng)
+        actions = jnp.transpose(actions, (1, 0, 2))         # [B, T, action_dim]
+        if per_step_log_probs:
+            log_probs = jnp.transpose(log_probs, (1, 0))   # [B, T]
+        else:
+            log_probs = log_probs.sum(axis=0)               # [B], only step-0 non-zero
+        return actions, log_probs, params[0], params[1]
