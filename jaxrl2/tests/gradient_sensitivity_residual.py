@@ -39,7 +39,7 @@ def _prepare_pi0_noise(actions_noise, pi0_action_horizon, action_dim=None):
     Args:
         actions_noise      : (C, D) or (1, C, D)-like array
         pi0_action_horizon : target T (pad by repeating last row)
-        action_dim         : if set, zero-pad / truncate the last axis to this D
+        action_dim          : if set, zero-pad / truncate the last axis to this D
     """
     noise = actions_noise[None] if actions_noise.ndim == 2 else actions_noise
     if noise.shape[1] < pi0_action_horizon:
@@ -76,26 +76,76 @@ def _preprocess_obs(agent_dp, obs_pi_zero):
 
 
 def gradient_sensitivity_matrix(agent_dp, obs_proc, noise_pi0):
-    """Exact (T_action, T_noise) sensitivity matrix via jax.jacfwd.
+    """Exact (T_action, T_noise) sensitivity matrix via jax.jacfwd, plus the
+    identity-baseline residual.
 
-    Entry [i, j] = ||∂a_i / ∂z_j||_F  (Frobenius norm over action dim A and
-    latent dim D of the (A, D) Jacobian block).
+    Entry [i, j] of the raw matrix = ||∂a_i / ∂z_j||_F  (Frobenius norm over
+    action dim A and latent dim D of the (A, D) Jacobian block).
+
+    Many flow-matching / rectified-flow action heads initialize the ODE at
+    the noise itself (x_0 = z), with noise and action-chunk sharing the same
+    (T, D) shape and combined *index-wise* at t=0. That means ∂x_0/∂z_i is
+    exactly the identity matrix on the diagonal block i == j, independent of
+    training. A bright diagonal in the raw sensitivity matrix is therefore
+    partly (or largely) a structural artifact of the parameterization, not
+    evidence the network learned to route action_i from latent_i.
+
+    To separate the trivial identity contribution from what the network
+    actually learned, we also compute the residual matrix:
+
+        R[i, j] = || J[i, :, j, :] - I_block[i, j] ||_F
+
+    where I_block[i, j] is the (A, D) identity matrix when i == j (and A ==
+    D), and zero everywhere else. This isolates the *learned correction* to
+    the identity map — i.e. whatever cross-timestep mixing the model
+    actually introduces during flow integration, on top of the trivial
+    initialization coupling.
+
+    Returns:
+        raw      : (T_action, T_noise) sensitivity matrix (as before)
+        residual : (T_action, T_noise) identity-subtracted sensitivity matrix
     """
     def fn(z):
         # z: (T, D) — add batch dim for _sample_actions, remove it from output
         return agent_dp._sample_actions(obs_proc, noise=z[None])[0]  # (T_action, A)
 
     J = jax.jacfwd(fn)(noise_pi0)   # (T_action, A, T_noise, D)
-    return jnp.sqrt(jnp.sum(J ** 2, axis=(1, 3)))  # (T_action, T_noise)
+    T_action, A, T_noise, D = J.shape
+
+    raw = jnp.sqrt(jnp.sum(J ** 2, axis=(1, 3)))  # (T_action, T_noise)
+
+    # Build the identity baseline tensor, same shape as J, nonzero only on
+    # the diagonal blocks i == j (and only if A == D, otherwise there's no
+    # well-defined identity map to subtract).
+    baseline = jnp.zeros_like(J)
+    if A == D:
+        T_diag = min(T_action, T_noise)
+        idx = jnp.arange(T_diag)
+        eye_block = jnp.eye(A, D)
+        # sets baseline[i, :, i, :] = eye_block for each i in idx
+        baseline = baseline.at[idx, :, idx, :].set(eye_block)
+    else:
+        print(f"[warn] action dim ({A}) != latent dim ({D}); skipping identity "
+              f"subtraction, residual == raw.")
+
+    residual_tensor = J - baseline
+    residual = jnp.sqrt(jnp.sum(residual_tensor ** 2, axis=(1, 3)))
+
+    return raw, residual
 
 
 def gradient_sensitivity_matrix_over_states(agent_dp, obs_procs, noises_pi0):
-    """Compute the sensitivity matrix averaged over N (state, noise) pairs."""
-    mats = [
-        gradient_sensitivity_matrix(agent_dp, obs_proc, noise_pi0)
-        for obs_proc, noise_pi0 in zip(obs_procs, noises_pi0)
-    ]
-    return jnp.mean(jnp.stack(mats, axis=0), axis=0)  # (T_action, T_noise)
+    """Compute the raw and residual sensitivity matrices averaged over N
+    (state, noise) pairs."""
+    raw_mats = []
+    res_mats = []
+    for obs_proc, noise_pi0 in zip(obs_procs, noises_pi0):
+        raw, res = gradient_sensitivity_matrix(agent_dp, obs_proc, noise_pi0)
+        raw_mats.append(raw)
+        res_mats.append(res)
+    mean_raw = jnp.mean(jnp.stack(raw_mats, axis=0), axis=0)      # (T_action, T_noise)
+    mean_res = jnp.mean(jnp.stack(res_mats, axis=0), axis=0)      # (T_action, T_noise)
+    return mean_raw, mean_res
 
 
 def plot_sensitivity_matrix(
@@ -123,7 +173,7 @@ def plot_sensitivity_matrix(
     C_a, C_l = mat.shape
 
     if ax is None:
-        fig, ax = plt.subplots(figsize=(4, 4))
+        fig, ax = plt.subplots(figsize=(5, 5))
     else:
         fig = ax.get_figure()
 
@@ -156,7 +206,8 @@ def plot_sensitivity_matrix(
 def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100, checkpoint="pi05_libero",
                              seed=0, filename="sensitivity_matrix_gradient"):
     """Compute OpenPI action sensitivity to DSRL latent noise via jax.jacfwd,
-    averaged over N sampled environment states.
+    averaged over N sampled environment states. Also computes and plots the
+    identity-baseline residual (see gradient_sensitivity_matrix docstring).
 
     For each sampled state:
       1. Run the restored DSRL actor on the observation to obtain a (C, D)
@@ -164,7 +215,8 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100, check
       2. Preprocess the observation once (input transforms + Observation build).
       3. Prepare the pi0-shaped noise once (numpy, outside the traced path).
       4. Call jax.jacfwd through _sample_actions to get the exact Jacobian and
-         compute the (T, C) sensitivity matrix.
+         compute both the raw (T, C) sensitivity matrix and its
+         identity-subtracted residual.
       5. Average the resulting matrices over all N states.
     """
 
@@ -263,10 +315,11 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100, check
     obs_proc_0 = _preprocess_obs(agent_dp, obs_pi_zero_0)
     noise_pi0_0 = _prepare_pi0_noise(noise_cd_0, action_horizon)[0]
 
-    print("Computing single-state gradient sensitivity matrix...", flush=True)
-    mat_0 = gradient_sensitivity_matrix(agent_dp, obs_proc_0, noise_pi0_0)
-    print(f"Single-state sensitivity matrix shape: {mat_0.shape}")
-    print(mat_0)
+    print("Computing single-state gradient sensitivity matrix (raw + residual)...", flush=True)
+    raw_0, res_0 = gradient_sensitivity_matrix(agent_dp, obs_proc_0, noise_pi0_0)
+    print(f"Single-state raw sensitivity matrix shape: {raw_0.shape}")
+    print("raw:\n", raw_0)
+    print("residual (identity-subtracted):\n", res_0)
 
     # Average over N sampled states
     print(f"\nComputing gradient sensitivity matrix over {N} states...", flush=True)
@@ -281,11 +334,14 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100, check
         if (i + 1) % 10 == 0:
             print(f"  collected {i + 1}/{N} states", flush=True)
 
-    mean_mat = gradient_sensitivity_matrix_over_states(
+    mean_raw, mean_res = gradient_sensitivity_matrix_over_states(
         agent_dp, obs_procs_list, noises_pi0_list,
     )
-    print("Mean sensitivity matrix:")
-    print(mean_mat)
+    print("Mean raw sensitivity matrix:")
+    print(mean_raw)
+    print("Mean residual (identity-subtracted) sensitivity matrix:")
+    print(mean_res)
+
     if checkpoint == "pi05_libero":
         model = "$\\pi_{0.5}$"
     elif checkpoint == "pi05_base":
@@ -302,16 +358,55 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100, check
     else:
         raise ValueError(f"Invalid libero suite: {libero_suite}")
     print(f"task_id: {task_id}")
-    fig, ax = plot_sensitivity_matrix(
-        mean_mat,
+
+    out_dir = pathlib.Path("plots/plots/sensitivity_matrices")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Side-by-side figure: raw vs. residual
+    fig, axes = plt.subplots(1, 2, figsize=(11, 5))
+    plot_sensitivity_matrix(
+        mean_raw,
+        title=f"Raw sensitivity (incl. identity term)\n{model} on {suite_name} Task {task_id}",
+        action_label="Action Timestep",
+        latent_label="Latent Timestep",
+        ax=axes[0],
+    )
+    plot_sensitivity_matrix(
+        mean_res,
+        title=f"Residual after subtracting identity baseline\n{model} on {suite_name} Task {task_id}",
+        action_label="Action Timestep",
+        latent_label="Latent Timestep",
+        ax=axes[1],
+        cmap="magma",
+    )
+    fig.tight_layout()
+    combined_path = out_dir / f"{filename}_raw_vs_residual.svg"
+    fig.savefig(combined_path)
+    print(f"Saved {combined_path}")
+
+    # Also save each individually, matching the original script's convention.
+    fig_raw, _ = plot_sensitivity_matrix(
+        mean_raw,
         title=f"Average gradient sensitivity for {model} on {suite_name} Task {task_id}",
         action_label="Action Timestep",
         latent_label="Latent Timestep",
     )
-    out_path = f"plots/plots/sensitivity_matrices/{filename}.svg"
-    fig.savefig(out_path)
-    print(f"Saved {out_path}")
-    return mean_mat
+    raw_path = out_dir / f"{filename}.svg"
+    fig_raw.savefig(raw_path)
+    print(f"Saved {raw_path}")
+
+    fig_res, _ = plot_sensitivity_matrix(
+        mean_res,
+        title=f"Identity-subtracted residual sensitivity for {model} on {suite_name} Task {task_id}",
+        action_label="Action Timestep",
+        latent_label="Latent Timestep",
+        cmap="magma",
+    )
+    res_path = out_dir / f"{filename}_residual.svg"
+    fig_res.savefig(res_path)
+    print(f"Saved {res_path}")
+
+    return mean_raw, mean_res
 
 
 if __name__ == "__main__":

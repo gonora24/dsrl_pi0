@@ -18,6 +18,7 @@ python -m jaxrl2.tests.jacobian \\
 """
 
 import argparse
+import json
 import pathlib
 
 import jax
@@ -26,7 +27,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-from openpi.models import model as _model
 from openpi.policies import policy_config
 from openpi.training import config as _openpi_config
 
@@ -41,26 +41,38 @@ from jaxrl2.tests.gradient_sensitivity import (
     create_libero_env,
 )
 
-from libero.libero import benchmark, get_libero_path
-from libero.libero.envs import OffScreenRenderEnv
+from libero.libero import benchmark
+
+plt.rcParams.update({
+    "mathtext.fontset": "cm",
+})
 
 
 # ---------------------------------------------------------------------------
 # Core Jacobian computation
 # ---------------------------------------------------------------------------
 
-def compute_jacobian_block(agent_dp, obs_proc, noise_pi0, action_idx=0, noise_idx=0):
+def compute_jacobian_block(
+    agent_dp, obs_proc, noise_pi0, action_idx=0, noise_idx=0, average_over_chunk=False
+):
     """Compute the (A, D) Jacobian block for one (action, noise) timestep pair.
 
     The full Jacobian J = d(actions) / d(noise) has shape (T_action, A, T_noise, D).
-    This function returns J[action_idx, :, noise_idx, :] of shape (A, D).
+    This function returns J[action_idx, :, noise_idx, :] of shape (A, D), unless
+    ``average_over_chunk`` is set, in which case it instead averages J over the
+    T_action and T_noise axes.
 
     Args:
         agent_dp   : trained pi0 policy (has _sample_actions and _input_transform)
         obs_proc   : preprocessed Observation (output of _preprocess_obs)
         noise_pi0  : (T_noise, D) noise array at which to differentiate
-        action_idx : action timestep to select (default 0)
-        noise_idx  : noise timestep to select (default 0)
+        action_idx : action timestep to select (default 0), ignored if
+                     average_over_chunk=True
+        noise_idx  : noise timestep to select (default 0), ignored if
+                     average_over_chunk=True
+        average_over_chunk : if True, average J over the T_action and T_noise
+                     axes instead of indexing a single (action_idx, noise_idx)
+                     pair, so no indices need to be specified
 
     Returns:
         J_block : (A, D) array of signed partial derivatives
@@ -69,12 +81,14 @@ def compute_jacobian_block(agent_dp, obs_proc, noise_pi0, action_idx=0, noise_id
         # z: (T_noise, D) — add batch dim, remove it from output
         return agent_dp._sample_actions(obs_proc, noise=z[None])[0]  # (T_action, A)
 
-    J = jax.jacfwd(fn)(noise_pi0)          # (T_action, A, T_noise, D)
+    J = jax.jacfwd(fn)(noise_pi0)  # (T_action, A, T_noise, D)
+    if average_over_chunk:
+        return jnp.mean(J, axis=(0, 2))    # (A, D), averaged over T_action & T_noise
     return J[action_idx, :, noise_idx, :]  # (A, D)
 
 
 def compute_jacobian_block_over_states(
-    agent_dp, obs_procs, noises_pi0, action_idx=0, noise_idx=0
+    agent_dp, obs_procs, noises_pi0, action_idx=0, noise_idx=0, average_over_chunk=False
 ):
     """Compute the (A, D) Jacobian block averaged over N (state, noise) pairs.
 
@@ -82,19 +96,58 @@ def compute_jacobian_block_over_states(
         agent_dp   : trained pi0 policy
         obs_procs  : list of N preprocessed Observations
         noises_pi0 : list of N (T_noise, D) noise arrays
-        action_idx : action timestep to select (default 0)
-        noise_idx  : noise timestep to select (default 0)
+        action_idx : action timestep to select (default 0), ignored if
+                     average_over_chunk=True
+        noise_idx  : noise timestep to select (default 0), ignored if
+                     average_over_chunk=True
+        average_over_chunk : if True, also average each state's Jacobian block
+                     over the T_action and T_noise axes (see
+                     compute_jacobian_block)
 
     Returns:
         mean_block : (A, D) mean Jacobian block
     """
     blocks = [
-        compute_jacobian_block(agent_dp, obs_proc, noise_pi0, action_idx, noise_idx)
+        compute_jacobian_block(
+            agent_dp, obs_proc, noise_pi0, action_idx, noise_idx,
+            average_over_chunk=average_over_chunk,
+        )
         for obs_proc, noise_pi0 in zip(obs_procs, noises_pi0)
     ]
     return jnp.mean(jnp.stack(blocks, axis=0), axis=0)  # (A, D)
 
-    
+
+# ---------------------------------------------------------------------------
+# Influence metric
+# ---------------------------------------------------------------------------
+
+def compute_influence(J_block, num_actions=None):
+    """Per-latent-dimension influence metric.
+
+    For a Jacobian block J_block = ∂a / ∂w with shape (A, D), the influence of
+    latent dimension d is the squared L2 norm of the corresponding column:
+
+        Infl_d(w) = || ∂a / ∂w_d ||_2^2 = sum_a J_block[a, d]^2
+
+    i.e. aggregating (summing squares) one column of the Jacobian over the
+    action dimension.
+
+    Args:
+        J_block     : (A, D) array of partial derivatives
+        num_actions : if set, crop J_block to its first num_actions rows
+                      before aggregating (matches the heatmap crop; padding
+                      rows are already zero so this normally doesn't change
+                      the result)
+
+    Returns:
+        influence : (D,) array, one value per latent dimension
+    """
+    J_block = np.array(J_block)
+    if num_actions is not None:
+        J_block = J_block[:num_actions, :]
+    return np.sum(J_block ** 2, axis=0)  # (D,)
+
+
 # ---------------------------------------------------------------------------
 # Plotting
 # ---------------------------------------------------------------------------
@@ -105,8 +158,9 @@ def plot_jacobian_block(
     noise_idx=0,
     title=None,
     ax=None,
-    cmap="RdBu_r",
+    cmap="coolwarm",
     num_actions=None,
+    average_over_chunk=False,
 ):
     """Heatmap of a signed (A, D) Jacobian block.
 
@@ -120,13 +174,18 @@ def plot_jacobian_block(
 
     Args:
         J_block     : (A, D) array of partial derivatives
-        action_idx  : action timestep index (used in auto-title and labels)
-        noise_idx   : noise timestep index (used in auto-title and labels)
+        action_idx  : action timestep index (used in auto-title and labels),
+                      ignored if average_over_chunk=True
+        noise_idx   : noise timestep index (used in auto-title and labels),
+                      ignored if average_over_chunk=True
         title       : plot title; auto-generated from indices if None
         ax          : existing Axes to draw into (new figure created if None)
         cmap        : matplotlib colormap (diverging recommended)
         num_actions : if set, crop J_block to its first num_actions rows before
                       plotting (use to hide zero-padding rows, e.g. 7 for LIBERO)
+        average_over_chunk : if True, use an auto-title reflecting that
+                      J_block was averaged over the whole action/noise chunk
+                      instead of citing action_idx/noise_idx
 
     Returns:
         fig, ax
@@ -137,22 +196,29 @@ def plot_jacobian_block(
     A, D = J_block.shape
 
     if title is None:
-        title = (
-            f"Jacobian  ∂a_{action_idx} / ∂z_{noise_idx}"
-            f"  (A={A}, D={D})"
-        )
+        if average_over_chunk:
+            title = (
+                f"Jacobian  ∂a / ∂z  (averaged over action & noise chunk)"
+                f"  (A={A}, D={D})"
+            )
+        else:
+            title = (
+                f"Jacobian  ∂a_{action_idx} / ∂z_{noise_idx}"
+                f"  (A={A}, D={D})"
+            )
 
     if ax is None:
         fig, ax = plt.subplots(
-            figsize=(max(4, D * 0.4 + 1), max(3, A * 0.6 + 1))
+            figsize=(8, 4)
         )
     else:
         fig = ax.get_figure()
-    fig.set_mathtext_fontset("cm")
+
     vabs = float(max(abs(J_block.min()), abs(J_block.max())))
-    vabs_min=float(min(abs(J_block.min()), abs(J_block.max())))
-    if vabs == 0.0:
-        vabs = 1.0  # avoid degenerate colour scale for zero matrices
+    # vabs = float(max(abs(J_block.min()), abs(J_block.max())))
+    # vabs_min=float(min(J_block.min(), J_block.max()))
+    # if vabs == 0.0:
+    #     vabs = 1.0  # avoid degenerate colour scale for zero matrices
 
     im = ax.imshow(
         J_block,
@@ -160,16 +226,16 @@ def plot_jacobian_block(
         cmap=cmap,
         origin="upper",
         interpolation="nearest",
-        vmin=-vabs_min,
+        vmin=-vabs,
         vmax=vabs,
     )
 
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label(r"$\partial a / \partial z$", fontsize=9)
+    cbar.set_label(r"$\partial a / \partial z$", fontsize=11)
 
     ax.set_xlabel(f"Noise dimensions", fontsize=11)
     ax.set_ylabel(f"Action dimensions", fontsize=11)
-    ax.set_title(title, fontsize=15, pad=5)
+    ax.set_title(title, fontsize=15, pad=10)
 
     ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
     ax.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
@@ -189,6 +255,62 @@ def plot_jacobian_block(
     return fig, ax
 
 
+def plot_influence(
+    influence,
+    action_idx=0,
+    noise_idx=0,
+    title=None,
+    ax=None,
+    average_over_chunk=False,
+):
+    """Bar chart of the per-latent-dimension influence metric.
+
+    Args:
+        influence  : (D,) array, Infl_d(w) for each latent dimension d
+        action_idx : action timestep index (used in auto-title), ignored if
+                     average_over_chunk=True
+        noise_idx  : noise timestep index (used in auto-title), ignored if
+                     average_over_chunk=True
+        title      : plot title; auto-generated from indices if None
+        ax         : existing Axes to draw into (new figure created if None)
+        average_over_chunk : if True, use an auto-title reflecting that the
+                     underlying Jacobian was averaged over the whole
+                     action/noise chunk instead of citing action_idx/noise_idx
+
+    Returns:
+        fig, ax
+    """
+    influence = np.array(influence)
+    D = influence.shape[0]
+
+    if title is None:
+        if average_over_chunk:
+            title = (
+                f"Influence  Infl_d(w) = ||∂a / ∂w_d||₂²"
+                f"  (D={D}, averaged over action & noise chunk)"
+            )
+        else:
+            title = (
+                f"Influence  Infl_d(w) = ||∂a_{action_idx} / ∂w_d||₂²"
+                f"  (D={D}, noise_idx={noise_idx})"
+            )
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 4))
+    else:
+        fig = ax.get_figure()
+
+    ax.bar(np.arange(D), influence, color="tab:blue")
+
+    ax.set_xlabel("Latent dimension  d", fontsize=11)
+    ax.set_ylabel(r"$\mathrm{Infl}_d(w)$", fontsize=11)
+    ax.set_title(title, fontsize=15, pad=10)
+    ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+
+    fig.tight_layout()
+    return fig, ax
+
+
 # ---------------------------------------------------------------------------
 # Top-level driver
 # ---------------------------------------------------------------------------
@@ -202,6 +324,7 @@ def jacobian_test(
     checkpoint="pi05_base",
     action_idx=0,
     noise_idx=0,
+    average_over_chunk=False,
     filename="jacobian",
     num_actions=None,
     run_over_trajectory=False,
@@ -209,6 +332,8 @@ def jacobian_test(
     max_timesteps=400,
     title_str=None,
     num_rollouts=1,
+    compute_influence_metric=True,
+    plot=True,
 ):
     """Compute and plot the Jacobian block ∂a_{action_idx} / ∂z_{noise_idx}.
 
@@ -216,7 +341,9 @@ def jacobian_test(
       1. Load the pi0 checkpoint and (optionally) the DSRL noise actor.
       2. Sample N (state, noise) pairs from the LIBERO environment.
       3. Compute the (A, D) Jacobian block, averaged over all N states.
-      4. Save the figure to plots/plots/jacobians/ and the raw array as .npy.
+      4. Optionally compute the per-latent-dimension influence metric.
+      5. Save the raw array as .npy, metrics as .json, and (optionally) the
+         figures to plots/plots/jacobians/.
 
     Args:
         noise_actor_dir : path to PixelSACLearner checkpoint dir (random if None)
@@ -225,8 +352,14 @@ def jacobian_test(
         N               : number of (state, noise) samples to average over
         seed            : RNG seed
         checkpoint      : pi0 checkpoint key in CHECKPOINTS
-        action_idx      : which action timestep to differentiate (default 0)
-        noise_idx       : which noise timestep to perturb (default 0)
+        action_idx      : which action timestep to differentiate (default 0),
+                          ignored if average_over_chunk=True
+        noise_idx       : which noise timestep to perturb (default 0),
+                          ignored if average_over_chunk=True
+        average_over_chunk : if True, average the Jacobian over the whole
+                          action and noise chunk (T_action and T_noise axes)
+                          instead of indexing a single action_idx/noise_idx
+                          pair, so no indices need to be specified
         filename        : output filename stem
         num_actions     : if set, crop the plot to only the first num_actions
                           action-dim rows (use 7 for LIBERO to hide zero-padding)
@@ -235,6 +368,13 @@ def jacobian_test(
         max_timesteps     : maximum number of timesteps to run over (default 400)
         title_str       : title string for the plot
         num_rollouts    : number of rollouts to run over (default 1)
+        compute_influence_metric : if True, compute the per-latent-dimension
+                          influence metric Infl_d(w) and include it in the
+                          saved metrics JSON (and, if plot=True, plot it)
+        plot            : if True, generate and save the heatmap (and, if
+                          compute_influence_metric=True, the influence bar
+                          chart). If False, only the raw .npy and metrics
+                          .json are saved.
     Returns:
         mean_J_block : (A, D) averaged Jacobian block (full, before any crop)
     """
@@ -390,13 +530,21 @@ def jacobian_test(
     # ------------------------------------------------------------------
     # Compute Jacobian block
     # ------------------------------------------------------------------
-    print(
-        f"Computing Jacobian block (action_idx={action_idx}, noise_idx={noise_idx})"
-        f" averaged over {N} state(s)...",
-        flush=True,
-    )
+    if average_over_chunk:
+        print(
+            f"Computing Jacobian block (averaged over the whole action/noise "
+            f"chunk) averaged over {N} state(s)...",
+            flush=True,
+        )
+    else:
+        print(
+            f"Computing Jacobian block (action_idx={action_idx}, noise_idx={noise_idx})"
+            f" averaged over {N} state(s)...",
+            flush=True,
+        )
     mean_J_block = compute_jacobian_block_over_states(
-        agent_dp, obs_procs_list, noises_pi0_list, action_idx, noise_idx
+        agent_dp, obs_procs_list, noises_pi0_list, action_idx, noise_idx,
+        average_over_chunk=average_over_chunk,
     )
     print(f"Jacobian block shape: {mean_J_block.shape}")
     if num_actions is not None:
@@ -407,32 +555,84 @@ def jacobian_test(
         print(f"Value range: [{float(mean_J_block.min()):.4f}, {float(mean_J_block.max()):.4f}]")
 
     # ------------------------------------------------------------------
+    # Influence metric
+    # ------------------------------------------------------------------
+    influence = None
+    if compute_influence_metric:
+        influence = compute_influence(mean_J_block, num_actions=num_actions)
+        print(f"Influence Infl_d(w) (D={influence.shape[0]}):")
+        print(influence)
+        top_dims = np.argsort(influence)[::-1][:5]
+        print(f"Top-5 influential latent dims: {top_dims.tolist()}")
+
+    # ------------------------------------------------------------------
     # Save raw array
     # ------------------------------------------------------------------
-    stem     = f"{filename}_a{action_idx}_n{noise_idx}"
+    if average_over_chunk:
+        stem = f"{filename}_avgchunk"
+    else:
+        stem = f"{filename}_a{action_idx}_n{noise_idx}"
     npy_path = out_dir / f"{stem}.npy"
     np.save(npy_path, np.array(mean_J_block))
     print(f"Saved array → {npy_path}")
 
     # ------------------------------------------------------------------
-    # Plot and save figure
+    # Save metrics JSON
     # ------------------------------------------------------------------
-    task_desc = (
-        f"{libero_suite} all_tasks" if task_id is None
-        else f"{libero_suite} task {task_id}"
-    )
-    fig, ax = plot_jacobian_block(
-        mean_J_block,
-        action_idx=action_idx,
-        noise_idx=noise_idx,
-        title=title_str,
-        num_actions=num_actions,
-    )
+    metrics = {
+        "checkpoint": checkpoint,
+        "libero_suite": libero_suite,
+        "task_id": task_id,
+        "N": N,
+        "action_idx": None if average_over_chunk else action_idx,
+        "noise_idx": None if average_over_chunk else noise_idx,
+        "average_over_chunk": average_over_chunk,
+        "num_actions": num_actions,
+        "jacobian_shape": list(np.array(mean_J_block).shape),
+        "jacobian_value_range": [
+            float(np.array(mean_J_block).min()),
+            float(np.array(mean_J_block).max()),
+        ],
+        "influence": influence.tolist() if influence is not None else None,
+    }
+    metrics_path = out_dir / f"{stem}_metrics.json"
+    with open(metrics_path, "w") as f:
+        json.dump(metrics, f, indent=2)
+    print(f"Saved metrics → {metrics_path}")
 
-    fig_path = out_dir / f"{stem}.png"
-    fig.savefig(fig_path, dpi=150)
-    print(f"Saved figure → {fig_path}")
-    plt.close(fig)
+    # ------------------------------------------------------------------
+    # Plot and save figure(s)
+    # ------------------------------------------------------------------
+    if plot:
+        task_desc = (
+            f"{libero_suite} all_tasks" if task_id is None
+            else f"{libero_suite} task {task_id}"
+        )
+        fig, ax = plot_jacobian_block(
+            mean_J_block,
+            action_idx=action_idx,
+            noise_idx=noise_idx,
+            title=title_str,
+            num_actions=num_actions,
+            average_over_chunk=average_over_chunk,
+        )
+
+        fig_path = out_dir / f"{stem}.svg"
+        fig.savefig(fig_path)
+        print(f"Saved figure → {fig_path}")
+        plt.close(fig)
+
+        if influence is not None:
+            infl_fig, infl_ax = plot_influence(
+                influence,
+                action_idx=action_idx,
+                noise_idx=noise_idx,
+                average_over_chunk=average_over_chunk,
+            )
+            infl_fig_path = out_dir / f"{stem}_influence.svg"
+            infl_fig.savefig(infl_fig_path)
+            print(f"Saved influence figure → {infl_fig_path}")
+            plt.close(infl_fig)
 
     return mean_J_block
 
@@ -478,6 +678,15 @@ if __name__ == "__main__":
         help="Noise timestep index j for ∂a_i / ∂z_j (default: 0)",
     )
     parser.add_argument(
+        "--average_over_chunk", type=int, default=0,
+        help=(
+            "If 1, average the Jacobian over the whole action/noise chunk "
+            "(T_action and T_noise axes) instead of indexing a single "
+            "action_idx/noise_idx pair, so --action_idx/--noise_idx don't "
+            "need to be specified (default: 0)"
+        ),
+    )
+    parser.add_argument(
         "--filename", type=str, default="jacobian",
         help="Output filename stem (default: jacobian)",
     )
@@ -509,6 +718,22 @@ if __name__ == "__main__":
         "--num_rollouts", type=int, default=1,
         help="Number of rollouts to run over (default: 1)",
     )
+    parser.add_argument(
+        "--compute_influence", type=int, default=1,
+        help=(
+            "If 1, compute the per-latent-dimension influence metric "
+            "Infl_d(w) = ||da/dw_d||_2^2 and include it in the metrics JSON "
+            "(default: 1)"
+        ),
+    )
+    parser.add_argument(
+        "--plot", type=int, default=1,
+        help=(
+            "If 1, generate and save plots (heatmap and, if "
+            "--compute_influence 1, the influence bar chart). If 0, only "
+            "the raw .npy and metrics .json are saved (default: 1)"
+        ),
+    )
     args = parser.parse_args()
 
     jacobian_test(
@@ -520,6 +745,7 @@ if __name__ == "__main__":
         checkpoint=args.checkpoint,
         action_idx=args.action_idx,
         noise_idx=args.noise_idx,
+        average_over_chunk=bool(args.average_over_chunk),
         filename=args.filename,
         num_actions=args.num_actions,
         run_over_trajectory=args.run_over_trajectory,
@@ -527,4 +753,6 @@ if __name__ == "__main__":
         max_timesteps=args.max_timesteps,
         title_str=args.title_str,
         num_rollouts=args.num_rollouts,
+        compute_influence_metric=bool(args.compute_influence),
+        plot=bool(args.plot),
     )
