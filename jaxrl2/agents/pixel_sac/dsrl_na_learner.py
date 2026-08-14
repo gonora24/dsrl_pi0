@@ -474,7 +474,18 @@ class DSRLNALearner(Agent):
 
         target_key, rng = jax.random.split(self._rng)
         actor_key, noise_key = jax.random.split(rng)
-        if self.only_predict_dims_until > 0:
+        frozen = self._step < self.freeze_latent_models
+        if frozen:
+            print("DSRL-NA update: frozen mode, using target noise", flush=True)
+            self.original_action_dsrl_action_dim = 32
+            _batch_size = batch_train['actions'].shape[0]
+            target_noise = jax.random.normal(
+                target_key,
+                (_batch_size, self.agent_dp.action_horizon, self.original_action_dsrl_action_dim),
+            )
+            next_log_probs = jnp.zeros(target_noise.shape[0])
+        elif self.only_predict_dims_until > 0:
+            print("DSRL-NA update: only predict dims until", self.only_predict_dims_until, flush=True)
             self.original_action_dsrl_action_dim = 32
             _batch_size = batch_train['actions'].shape[0]
             bg_noise_key, actor_sample_key = jax.random.split(target_key)
@@ -513,7 +524,6 @@ class DSRLNALearner(Agent):
 
         if log_boundaries:
             print("DSRL-NA update: starting compiled actor/critic update", flush=True)
-        frozen = self._step < self.freeze_latent_models
         print(f'self._step: {self._step}')
         if self._step == 0:
             optimized = 'na_critic only' if frozen else 'noise_actor + noise_critic + na_critic + temp'
@@ -550,7 +560,7 @@ class DSRLNALearner(Agent):
             self.use_actor_diff,
             frozen,
             self.only_predict_dims_until,
-            self.backup_entropy,
+            self.backup_entropy if not frozen else False,
         )
         self._step += 1
 
