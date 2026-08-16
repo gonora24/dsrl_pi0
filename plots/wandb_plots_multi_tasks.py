@@ -56,7 +56,7 @@ METHOD_COLORS = [
 ]
 
 DIM_COLORS = [
-    # "#D55E00",  # Baseline
+    "#D55E00",  # Baseline
     "#5e00d5",  # 7dims
     "#d50077",  # 7dims chunked
     "#005889",  # 7dims chunked 5vecs
@@ -102,14 +102,14 @@ def nice_step_ticks(max_step: float) -> list[float]:
     if max_step <= 0:
         return [0.0]
     nice_units = [
-        50_000, 100_000, 250_000, 500_000,
+        50_000, 100_000, 200_000, 250_000, 400_000, 500_000, 600_000, 750_000, 800_000,
         1_000_000, 2_000_000, 2_500_000, 5_000_000,
     ]
     target_ticks = 5
     best_ticks = [0.0, max_step]
     for unit in nice_units:
         ticks = [float(i * unit) for i in range(int(max_step / unit) + 2) if i * unit <= max_step]
-        if 4 <= len(ticks) <= 7:
+        if target_ticks <= len(ticks) <= target_ticks + 2:
             return ticks
         if len(ticks) >= 4 and abs(len(ticks) - target_ticks) < abs(len(best_ticks) - target_ticks):
             best_ticks = ticks
@@ -340,6 +340,8 @@ def plot_multi_task(
         fig, axes = plt.subplots(2, 2, figsize=(14, 10), sharey=True)
     elif len(task_titles) == 6:
         fig, axes = plt.subplots(3, 2, figsize=(14, 14), sharey=True)
+    elif len(task_titles) == 5:
+        fig, axes = plt.subplots(3, 2, figsize=(14, 14), sharey=True)
     else:
         raise ValueError(f"Unsupported number of tasks: {len(task_titles)}")
 
@@ -364,9 +366,14 @@ def plot_multi_task(
             errorbar=None if errorbar == "none" else errorbar,
         )
 
-        max_step = float(df["step"].max())
-        ax.set_xlim(0, max_step)
-        ax.set_xticks(nice_step_ticks(max_step))
+        # Use the requested cap (if any) as the axis ceiling rather than the
+        # actual last sampled step. wandb's history() sub-samples points, so
+        # the last row after filtering to `max_steps` can land slightly below
+        # it (e.g. 799000 instead of 800000), which would otherwise cause
+        # nice_step_ticks to silently drop the tick at `max_steps`.
+        axis_max = float(max_steps) if max_steps is not None else float(df["step"].max())
+        ax.set_xlim(0, axis_max)
+        ax.set_xticks(nice_step_ticks(axis_max))
         ax.xaxis.set_major_formatter(FuncFormatter(format_training_steps))
         ax.set_ylim(y_bottom, y_top)
 
@@ -386,6 +393,13 @@ def plot_multi_task(
             line.set_zorder(3 + n_lines - i)
             line.set_clip_on(False)
 
+    # If we have fewer subplots than grid cells (e.g. 5 tasks in a 3x2 grid),
+    # hide the leftover axes so their cell renders as blank space while the
+    # overall grid layout/spacing stays identical to the full grid.
+    total_cells = axes.shape[0] * axes.shape[1]
+    for leftover_idx in range(len(task_titles), total_cells):
+        axes[leftover_idx // axes.shape[1]][leftover_idx % axes.shape[1]].set_visible(False)
+
     # Shared figure title
     if suptitle:
         fig.suptitle(suptitle, y=1.01)
@@ -399,8 +413,8 @@ def plot_multi_task(
     ]
 
     n_legend_cols = min(len(all_labels), 2)
-    if len(task_titles) == 6:
-        fig.tight_layout(rect=[0, 0.10, 1, 1])
+    if len(task_titles) in (5, 6):
+        fig.tight_layout(rect=[0, 0.08, 1, 1])
     elif len(all_labels) > 4:
         fig.tight_layout(rect=[0, 0.18, 1, 1])
     else:

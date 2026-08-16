@@ -262,6 +262,7 @@ def plot_influence(
     title=None,
     ax=None,
     average_over_chunk=False,
+    task_id=None,
 ):
     """Bar chart of the per-latent-dimension influence metric.
 
@@ -276,7 +277,7 @@ def plot_influence(
         average_over_chunk : if True, use an auto-title reflecting that the
                      underlying Jacobian was averaged over the whole
                      action/noise chunk instead of citing action_idx/noise_idx
-
+        task_id    : task id (used in auto-title)
     Returns:
         fig, ax
     """
@@ -286,8 +287,7 @@ def plot_influence(
     if title is None:
         if average_over_chunk:
             title = (
-                f"Influence  Infl_d(w) = ||∂a / ∂w_d||₂²"
-                f"  (D={D}, averaged over action & noise chunk)"
+                f"Influence Metric $\pi_{{0.5}}$ Task {task_id} LIBERO-90 "
             )
         else:
             title = (
@@ -304,11 +304,117 @@ def plot_influence(
 
     ax.set_xlabel("Latent dimension  d", fontsize=11)
     ax.set_ylabel(r"$\mathrm{Infl}_d(w)$", fontsize=11)
-    ax.set_title(title, fontsize=15, pad=10)
+    ax.set_title(title, fontsize=15, pad=13)
     ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
 
     fig.tight_layout()
     return fig, ax
+
+
+# ---------------------------------------------------------------------------
+# Shared save/plot helper
+# ---------------------------------------------------------------------------
+
+def _save_jacobian_outputs(
+    J_block,
+    out_dir,
+    stem,
+    metrics_base,
+    action_idx=0,
+    noise_idx=0,
+    num_actions=None,
+    average_over_chunk=False,
+    compute_influence_metric=True,
+    plot=True,
+    title_str=None,
+    task_id=None,
+):
+    """Save the raw array, metrics JSON, and (optionally) plots for one Jacobian block.
+
+    Args:
+        J_block       : (A, D) array of partial derivatives
+        out_dir       : directory to save into (created if missing)
+        stem          : output filename stem (without extension)
+        metrics_base  : dict of run-level metadata to include verbatim in the
+                         saved metrics JSON (e.g. checkpoint, libero_suite,
+                         task_id, rollout/timestep info, ...)
+        action_idx    : action timestep index (used in auto-titles), ignored
+                         if average_over_chunk=True
+        noise_idx     : noise timestep index (used in auto-titles), ignored
+                         if average_over_chunk=True
+        num_actions   : if set, crop J_block to its first num_actions rows
+                         before computing influence / plotting
+        average_over_chunk : whether J_block was averaged over the whole
+                         action/noise chunk (affects auto-titles/metrics)
+        compute_influence_metric : if True, compute and save the per-latent
+                         influence metric
+        plot          : if True, save the heatmap (and influence bar chart)
+        title_str     : title string for the heatmap plot
+
+    Returns:
+        influence : (D,) array, or None if compute_influence_metric=False
+    """
+    out_dir = pathlib.Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    influence = None
+    if compute_influence_metric:
+        influence = compute_influence(J_block, num_actions=num_actions)
+        print(f"Influence Infl_d(w) (D={influence.shape[0]}):")
+        print(influence)
+        top_dims = np.argsort(influence)[::-1][:5]
+        print(f"Top-5 influential latent dims: {top_dims.tolist()}")
+
+    npy_path = out_dir / f"{stem}.npy"
+    np.save(npy_path, np.array(J_block))
+    print(f"Saved array → {npy_path}")
+
+    metrics = dict(metrics_base)
+    metrics.update({
+        "action_idx": None if average_over_chunk else action_idx,
+        "noise_idx": None if average_over_chunk else noise_idx,
+        "average_over_chunk": average_over_chunk,
+        "num_actions": num_actions,
+        "jacobian_shape": list(np.array(J_block).shape),
+        "jacobian_value_range": [
+            float(np.array(J_block).min()),
+            float(np.array(J_block).max()),
+        ],
+        "influence": influence.tolist() if influence is not None else None,
+    })
+    metrics_path = out_dir / f"{stem}_metrics.json"
+    with open(metrics_path, "w") as f:
+        json.dump(metrics, f, indent=2)
+    print(f"Saved metrics → {metrics_path}")
+
+    if plot:
+        fig, ax = plot_jacobian_block(
+            J_block,
+            action_idx=action_idx,
+            noise_idx=noise_idx,
+            title=title_str,
+            num_actions=num_actions,
+            average_over_chunk=average_over_chunk,
+        )
+        fig_path = out_dir / f"{stem}.svg"
+        fig.savefig(fig_path)
+        print(f"Saved figure → {fig_path}")
+        plt.close(fig)
+
+        if influence is not None:
+            infl_fig, infl_ax = plot_influence(
+                influence,
+                action_idx=action_idx,
+                noise_idx=noise_idx,
+                average_over_chunk=average_over_chunk,
+                task_id=task_id,
+            )
+            infl_fig_path = out_dir / f"{stem}_influence.svg"
+            infl_fig.savefig(infl_fig_path)
+            print(f"Saved influence figure → {infl_fig_path}")
+            plt.close(infl_fig)
+
+    return influence
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +440,8 @@ def jacobian_test(
     num_rollouts=1,
     compute_influence_metric=True,
     plot=True,
+    gripper_close_mode=False,
+    gripper_close_threshold=0.5,
 ):
     """Compute and plot the Jacobian block ∂a_{action_idx} / ∂z_{noise_idx}.
 
@@ -375,11 +483,38 @@ def jacobian_test(
                           compute_influence_metric=True, the influence bar
                           chart). If False, only the raw .npy and metrics
                           .json are saved.
+        gripper_close_mode : if True, switch to a different mode entirely:
+                          instead of the usual whole-trajectory-averaged
+                          output, roll out a trajectory (requires
+                          run_over_trajectory=True) and, whenever the
+                          gripper action (index num_actions - 1) transitions
+                          from open to closed (crosses
+                          gripper_close_threshold), compute the chunk-
+                          averaged Jacobian/influence for that event and
+                          save it to plots/plots/jacobian/<filename>/.
+                          Requires num_actions to be set.
+        gripper_close_threshold : threshold on the gripper action dimension
+                          above which it is considered "closing" (default
+                          0.5), only used if gripper_close_mode=True
     Returns:
-        mean_J_block : (A, D) averaged Jacobian block (full, before any crop)
+        mean_J_block : (A, D) averaged Jacobian block (full, before any crop),
+                       or None if gripper_close_mode=True (outputs are saved
+                       per-event instead)
     """
+    if gripper_close_mode and not run_over_trajectory:
+        raise ValueError(
+            "gripper_close_mode requires run_over_trajectory=True"
+        )
+    if gripper_close_mode and num_actions is None:
+        raise ValueError(
+            "gripper_close_mode requires num_actions to be set (e.g. 7 for "
+            "LIBERO) to identify the gripper action dimension"
+        )
+
     out_dir = pathlib.Path("plots/plots/jacobians")
     out_dir.mkdir(parents=True, exist_ok=True)
+    events_out_dir = pathlib.Path("plots/plots/jacobian") / filename
+    event_idx = 0
 
     # ------------------------------------------------------------------
     # Load policy
@@ -491,9 +626,11 @@ def jacobian_test(
             if (i + 1) % 10 == 0:
                 print(f"  collected {i + 1}/{N}", flush=True)
     else:
+        gripper_events = []
         for r in range(num_rollouts):
             print(f"Running rollout {r + 1}/{num_rollouts}...", flush=True)
             obs = env.reset()
+            prev_closed = False
             for t in range(max_timesteps):
                 curr_image = obs_to_img(obs, variant)
                 qpos = obs_to_qpos(obs, variant)
@@ -510,10 +647,80 @@ def jacobian_test(
                     obs_procs_list.append(obs_proc)
                     noises_pi0_list.append(noise_pi0)
 
-            action_t = actions[t % query_frequency]
-            obs, reward, done, info = env.step(action_t)
-            if done:
-                break
+                action_t = actions[t % query_frequency]
+
+                if gripper_close_mode:
+                    # obs_proc/noise_pi0 here are those from the most recent
+                    # policy query, i.e. the operating point that produced
+                    # the currently-executing action chunk (including action_t).
+                    gripper_idx = num_actions - 1
+                    gripper_val = float(action_t[gripper_idx])
+                    is_closed = gripper_val > gripper_close_threshold
+                    if is_closed and not prev_closed:
+                        print(
+                            f"Gripper-close event at rollout {r}, timestep {t} "
+                            f"(action[{gripper_idx}]={gripper_val:.3f})",
+                            flush=True,
+                        )
+                        J_event = compute_jacobian_block(
+                            agent_dp, obs_proc, noise_pi0, average_over_chunk=True,
+                        )
+                        stem = f"event{event_idx:03d}_rollout{r}_t{t}"
+                        _save_jacobian_outputs(
+                            J_event, events_out_dir, stem,
+                            metrics_base={
+                                "checkpoint": checkpoint,
+                                "libero_suite": libero_suite,
+                                "task_id": task_id,
+                                "rollout": r,
+                                "timestep": t,
+                                "gripper_idx": gripper_idx,
+                                "gripper_close_threshold": gripper_close_threshold,
+                                "gripper_value": gripper_val,
+                            },
+                            num_actions=num_actions,
+                            average_over_chunk=True,
+                            compute_influence_metric=compute_influence_metric,
+                            plot=plot,
+                            title_str=title_str,
+                            task_id=task_id,
+                        )
+                        gripper_events.append({
+                            "event_idx": event_idx,
+                            "rollout": r,
+                            "timestep": t,
+                            "gripper_value": gripper_val,
+                            "stem": stem,
+                        })
+                        event_idx += 1
+                    prev_closed = is_closed
+
+                obs, reward, done, info = env.step(action_t)
+                if done:
+                    break
+
+    if gripper_close_mode:
+        events_out_dir.mkdir(parents=True, exist_ok=True)
+        summary_path = events_out_dir / "events_summary.json"
+        with open(summary_path, "w") as f:
+            json.dump({
+                "checkpoint": checkpoint,
+                "libero_suite": libero_suite,
+                "task_id": task_id,
+                "num_rollouts": num_rollouts,
+                "max_timesteps": max_timesteps,
+                "query_frequency": query_frequency,
+                "num_actions": num_actions,
+                "gripper_close_threshold": gripper_close_threshold,
+                "num_events": event_idx,
+                "events": gripper_events,
+            }, f, indent=2)
+        print(
+            f"Gripper-close mode: saved {event_idx} event(s) → {events_out_dir} "
+            f"(summary: {summary_path})",
+            flush=True,
+        )
+        return None
 
     # Std of noise
     noise = np.array(noises_pi0_list)   # (N, 10, 32)
@@ -555,84 +762,31 @@ def jacobian_test(
         print(f"Value range: [{float(mean_J_block.min()):.4f}, {float(mean_J_block.max()):.4f}]")
 
     # ------------------------------------------------------------------
-    # Influence metric
-    # ------------------------------------------------------------------
-    influence = None
-    if compute_influence_metric:
-        influence = compute_influence(mean_J_block, num_actions=num_actions)
-        print(f"Influence Infl_d(w) (D={influence.shape[0]}):")
-        print(influence)
-        top_dims = np.argsort(influence)[::-1][:5]
-        print(f"Top-5 influential latent dims: {top_dims.tolist()}")
-
-    # ------------------------------------------------------------------
-    # Save raw array
+    # Influence metric, save raw array/metrics JSON, and plot(s)
     # ------------------------------------------------------------------
     if average_over_chunk:
         stem = f"{filename}_avgchunk"
     else:
         stem = f"{filename}_a{action_idx}_n{noise_idx}"
-    npy_path = out_dir / f"{stem}.npy"
-    np.save(npy_path, np.array(mean_J_block))
-    print(f"Saved array → {npy_path}")
 
-    # ------------------------------------------------------------------
-    # Save metrics JSON
-    # ------------------------------------------------------------------
-    metrics = {
-        "checkpoint": checkpoint,
-        "libero_suite": libero_suite,
-        "task_id": task_id,
-        "N": N,
-        "action_idx": None if average_over_chunk else action_idx,
-        "noise_idx": None if average_over_chunk else noise_idx,
-        "average_over_chunk": average_over_chunk,
-        "num_actions": num_actions,
-        "jacobian_shape": list(np.array(mean_J_block).shape),
-        "jacobian_value_range": [
-            float(np.array(mean_J_block).min()),
-            float(np.array(mean_J_block).max()),
-        ],
-        "influence": influence.tolist() if influence is not None else None,
-    }
-    metrics_path = out_dir / f"{stem}_metrics.json"
-    with open(metrics_path, "w") as f:
-        json.dump(metrics, f, indent=2)
-    print(f"Saved metrics → {metrics_path}")
-
-    # ------------------------------------------------------------------
-    # Plot and save figure(s)
-    # ------------------------------------------------------------------
-    if plot:
-        task_desc = (
-            f"{libero_suite} all_tasks" if task_id is None
-            else f"{libero_suite} task {task_id}"
-        )
-        fig, ax = plot_jacobian_block(
-            mean_J_block,
-            action_idx=action_idx,
-            noise_idx=noise_idx,
-            title=title_str,
-            num_actions=num_actions,
-            average_over_chunk=average_over_chunk,
-        )
-
-        fig_path = out_dir / f"{stem}.svg"
-        fig.savefig(fig_path)
-        print(f"Saved figure → {fig_path}")
-        plt.close(fig)
-
-        if influence is not None:
-            infl_fig, infl_ax = plot_influence(
-                influence,
-                action_idx=action_idx,
-                noise_idx=noise_idx,
-                average_over_chunk=average_over_chunk,
-            )
-            infl_fig_path = out_dir / f"{stem}_influence.svg"
-            infl_fig.savefig(infl_fig_path)
-            print(f"Saved influence figure → {infl_fig_path}")
-            plt.close(infl_fig)
+    _save_jacobian_outputs(
+        mean_J_block, out_dir, stem,
+        metrics_base={
+            "checkpoint": checkpoint,
+            "libero_suite": libero_suite,
+            "task_id": task_id,
+            "N": N,
+            "run_over_trajectory": run_over_trajectory,
+        },
+        action_idx=action_idx,
+        noise_idx=noise_idx,
+        num_actions=num_actions,
+        average_over_chunk=average_over_chunk,
+        compute_influence_metric=compute_influence_metric,
+        plot=plot,
+        title_str=title_str,
+        task_id=task_id,
+    )
 
     return mean_J_block
 
@@ -734,6 +888,26 @@ if __name__ == "__main__":
             "the raw .npy and metrics .json are saved (default: 1)"
         ),
     )
+    parser.add_argument(
+        "--gripper_close_mode", type=int, default=0,
+        help=(
+            "If 1, switch to a different mode: instead of the usual "
+            "whole-trajectory-averaged output, roll out a trajectory and, "
+            "whenever the gripper action (index num_actions - 1) transitions "
+            "from open to closed (crosses --gripper_close_threshold), save a "
+            "chunk-averaged Jacobian/influence for that event to "
+            "plots/plots/jacobian/<filename>/. Requires --run_over_trajectory 1 "
+            "and --num_actions to be set (default: 0)"
+        ),
+    )
+    parser.add_argument(
+        "--gripper_close_threshold", type=float, default=0.5,
+        help=(
+            "Threshold on the gripper action dimension above which it is "
+            "considered closing, only used if --gripper_close_mode 1 "
+            "(default: 0.5)"
+        ),
+    )
     args = parser.parse_args()
 
     jacobian_test(
@@ -755,4 +929,6 @@ if __name__ == "__main__":
         num_rollouts=args.num_rollouts,
         compute_influence_metric=bool(args.compute_influence),
         plot=bool(args.plot),
+        gripper_close_mode=bool(args.gripper_close_mode),
+        gripper_close_threshold=args.gripper_close_threshold,
     )

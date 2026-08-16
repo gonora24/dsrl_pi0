@@ -349,9 +349,14 @@ def plot_multi_task(
             errorbar=None if errorbar == "none" else errorbar,
         )
 
-        max_step = float(df["step"].max())
-        ax.set_xlim(0, max_step)
-        ax.set_xticks(nice_step_ticks(max_step))
+        # Use the requested cap (if any) as the axis ceiling rather than the
+        # actual last sampled step. wandb's history() sub-samples points, so
+        # the last row after filtering to `max_steps` can land slightly below
+        # it (e.g. 799000 instead of 800000), which would otherwise cause
+        # nice_step_ticks to silently drop the tick at `max_steps`.
+        axis_max = float(max_steps) if max_steps is not None else float(df["step"].max())
+        ax.set_xlim(0, axis_max)
+        ax.set_xticks(nice_step_ticks(axis_max))
         ax.xaxis.set_major_formatter(FuncFormatter(format_training_steps))
         ax.set_ylim(y_bottom, y_top)
 

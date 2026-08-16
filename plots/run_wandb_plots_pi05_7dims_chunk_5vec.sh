@@ -17,9 +17,9 @@ seeds_per_method=2
 
 task1_ids=(
   "dsrl_pi05_libero_90_task29_2026_07_31_08_04_03_0000--s-0_baseline_7dims"
-  ""
+  "dsrl_pi05_libero_90_task29_2026_08_12_13_18_25_0000--s-0_baseline_7dims"
   "dsrl_pi05_libero_90_task29_2026_07_31_08_06_09_0000--s-0_chunkrewardcriticactor_mlp_7dims"
-  ""
+  "dsrl_pi05_libero_90_task29_2026_08_13_07_44_58_0000--s-0_chunkrewardcriticactor_mlp_7dims"
   "dsrl_pi05_libero_90_task29_2026_08_01_11_15_21_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
   "dsrl_pi05_libero_90_task29_2026_08_02_15_14_37_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
   "dsrl_pi05_libero_90_task29_2026_08_07_22_46_43_0000--s-0_criticgpt_aractor_diff_7dims"
@@ -35,7 +35,7 @@ task2_ids=(
   "dsrl_pi05_libero_90_task38_2026_07_30_08_01_40_0000--s-0_baseline_only7dims"
   "dsrl_pi05_libero_90_task38_2026_07_31_08_02_05_0000--s-0_baseline_7dims"
   "dsrl_pi05_libero_90_task38_2026_07_30_17_24_53_0000--s-0_chunkrewardcriticactor_mlp_7dims"
-  ""
+  "dsrl_pi05_libero_90_task38_2026_08_13_07_44_58_0000--s-0_chunkrewardcriticactor_mlp_7dims"
   "dsrl_pi05_libero_90_task38_2026_08_02_09_30_38_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
   ""
   "dsrl_pi05_libero_90_task38_2026_08_08_16_11_41_0000--s-0_criticgpt_aractor_diff_7dims"
@@ -47,7 +47,7 @@ task2_title="Task 38"
 
 task3_ids=(
   "dsrl_pi05_libero_90_task59_2026_07_29_16_10_00_0000--s-0_baseline_only7dims"
-  ""
+  "dsrl_pi05_libero_90_task59_2026_08_12_13_07_58_0000--s-0_baseline_7dims"
   "dsrl_pi05_libero_90_task59_2026_07_30_10_06_45_0000--s-0_chunkrewardcriticactor_mlp_7dims"
   ""
   "dsrl_pi05_libero_90_task59_2026_08_03_17_16_09_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"

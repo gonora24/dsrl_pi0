@@ -95,7 +95,7 @@ def nice_step_ticks(max_step: float) -> list[float]:
         return [0.0]
 
     # Candidate divisors for ~5 ticks
-    divisors = [4, 5]
+    divisors = [3, 4, 5]
 
     nice_units = [
         50_000, 100_000, 150_000, 200_000, 250_000,
@@ -338,7 +338,9 @@ def plot_multi_task(
     y_bottom = ymin_val - bottom_pad
     y_top = ymax_val + top_pad
 
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
+    n_tasks = len(processed)
+    fig, axes = plt.subplots(1, n_tasks, figsize=(7 * n_tasks, 6), sharey=True)
+    axes = np.atleast_1d(axes)
 
     for idx, (df, title) in enumerate(zip(processed, task_titles)):
         ax = axes[idx]
@@ -361,9 +363,14 @@ def plot_multi_task(
             errorbar=None if errorbar == "none" else errorbar,
         )
 
-        max_step = float(df["step"].max())
-        ax.set_xlim(0, max_step)
-        ax.set_xticks(nice_step_ticks(max_step))
+        # Use the requested cap (if any) as the axis ceiling rather than the
+        # actual last sampled step. wandb's history() sub-samples points, so
+        # the last row after filtering to `max_steps` can land slightly below
+        # it (e.g. 799000 instead of 800000), which would otherwise cause
+        # nice_step_ticks to silently drop the tick at `max_steps`.
+        axis_max = float(max_steps) if max_steps is not None else float(df["step"].max())
+        ax.set_xlim(0, axis_max)
+        ax.set_xticks(nice_step_ticks(axis_max))
         ax.xaxis.set_major_formatter(FuncFormatter(format_training_steps))
         ax.set_ylim(y_bottom, y_top)
 
@@ -393,9 +400,10 @@ def plot_multi_task(
         Line2D([0], [0], color=palette[lbl], linewidth=2.5, label=lbl)
         for lbl in all_labels
     ]
-    n_legend_cols = min(len(all_labels), 2)
+    n_legend_cols = min(len(all_labels), 1)
+    fig.tight_layout(rect=[0, 0.28, 1, 1])
     # fig.tight_layout(rect=[0, 0.23, 1, 1])
-    fig.tight_layout(rect=[0, 0.18, 1, 1])
+    # fig.tight_layout(rect=[0, 0.18, 1, 1])
     fig.legend(
         handles=legend_handles,
         loc="lower center",

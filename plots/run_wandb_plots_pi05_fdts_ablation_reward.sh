@@ -16,55 +16,15 @@ entity="noragorhan-karlsruhe-institute-of-technology"
 seeds_per_method=2
 
 task1_ids=(
-  "dsrl_pi05_libero_90_task29_2026_07_31_08_03_38_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task29_2026_08_12_13_28_23_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task29_2026_07_31_08_04_03_0000--s-0_baseline_7dims"
-  "dsrl_pi05_libero_90_task29_2026_08_12_13_18_25_0000--s-0_baseline_7dims"
-)
-task1_title="Task 29"
-
-# --- Task 1 ---
-task2_ids=(
-  "dsrl_pi05_libero_90_task33_2026_07_30_08_07_47_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task33_2026_08_12_13_45_41_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task33_2026_07_30_08_01_42_0000--s-0_baseline_only7dims"
-  "dsrl_pi05_libero_90_task33_2026_08_12_13_18_25_0000--s-0_baseline_7dims"
-)
-task2_title="Task 33"
-
-
-# --- Task 2 ---
-task3_ids=(
-  "dsrl_pi05_libero_90_task38_2026_07_31_08_02_00_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task38_2026_07_30_08_07_34_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task38_2026_07_30_08_01_40_0000--s-0_baseline_only7dims"
-  "dsrl_pi05_libero_90_task38_2026_07_31_08_02_05_0000--s-0_baseline_7dims"
-)
-task3_title="Task 38"
-
-task4_ids=(
-  "dsrl_pi05_libero_90_task43_2026_07_30_07_38_49_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task43_2026_08_12_13_45_39_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task43_2026_07_30_07_40_22_0000--s-0_baseline_only7dims"
-  "dsrl_pi05_libero_90_task43_2026_08_12_13_15_56_0000--s-0_baseline_7dims"
-)
-task4_title="Task 43"
-
-task5_ids=(
   "dsrl_pi05_libero_90_task59_2026_06_19_16_13_16_0000--s-0_baseline"
   "dsrl_pi05_libero_90_task59_2026_07_07_09_46_10_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task59_2026_07_29_16_10_00_0000--s-0_baseline_only7dims"
-  "dsrl_pi05_libero_90_task59_2026_08_12_13_07_58_0000--s-0_baseline_7dims"
+  "dsrl_pi05_libero_90_task59_2026_07_08_08_19_37_0000--s-0_chunkreward_singleactorcritic_mlp_10replan_criticdim512_256_128"
+  ""
+  "dsrl_pi05_libero_90_task59_2026_07_07_14_13_06_0000--s-0_chunkycriticactor_mlp_singlereward_10replan_criticdim512_256_128"
+  ""
 )
-task5_title="Task 59"
+task1_title="Task 59"
 
-task6_ids=(
-  "dsrl_pi05_libero_90_task64_2026_07_30_18_02_06_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task64_2026_07_30_08_09_38_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task64_2026_07_30_07_59_18_0000--s-0_baseline_only7dims"
-  "dsrl_pi05_libero_90_task64_2026_07_31_07_59_42_0000--s-0_baseline_7dims"
-)
-task6_title="Task 64"
 
 # ---------------------------------------------------------------------------
 # Shared legend labels — runs at position i within a task block belong to
@@ -73,20 +33,16 @@ task6_title="Task 64"
 # ---------------------------------------------------------------------------
 method_labels=(
   "DSRL-SAC (Baseline)"
-  "RDS"
+  "Repeat MLP Actor + MLP Critic (Chunk Reward)"
+  "FDTS-Chunk MLP Actor + MLP Critic (Single Reward)"
 )
 
 all_task_ids=(
   "${task1_ids[@]}"
-  "${task2_ids[@]}"
-  "${task3_ids[@]}"
-  "${task4_ids[@]}"
-  "${task5_ids[@]}"
-  "${task6_ids[@]}"
 )
 
 labels=()
-for task_ids_ref in task1_ids task2_ids task3_ids task4_ids task5_ids task6_ids; do
+for task_ids_ref in task1_ids; do
   declare -n _ids="$task_ids_ref"
   for i in "${!_ids[@]}"; do
     method_idx=$(( i / seeds_per_method ))
@@ -98,13 +54,13 @@ done
 metric="evaluation/success_rate"
 x_axis="_step"
 suptitle="\$\pi_{0.5}\$ LIBERO-90"
-output="plots/plots_multi_tasks/pi05_libero90_7dims.svg"
+output="plots/plots_two_tasks/pi05_libero90_fdts_ablation_reward.svg"
 show_plot=0
 ymin=0.0
 ymax=1.0
 ema_halflife=25000
 clip_to_shortest_run=0
-
+dim_colors=0
 export LD_LIBRARY_PATH=
 export PYTHONPATH="${PYTHONPATH}:/home/hk-project-pai00139/eu3660/dsrl_pi0/dsrl_pi0/"
 export PYTHONPATH=$PYTHONPATH:/home/hk-project-pai00139/eu3660/dsrl_pi0/LIBERO
@@ -115,11 +71,11 @@ extra_args=()
 
 labels_str=$(IFS=','; echo "${labels[*]}")
 
-python3 plots/wandb_plots_multi_tasks.py \
+python3 plots/wandb_plots_two_tasks.py \
   --project "${proj_name}" \
   --entity "${entity}" \
   --identifiers "${all_task_ids[@]}" \
-  --task-titles "${task1_title}" "${task2_title}" "${task3_title}" "${task4_title}" "${task5_title}" "${task6_title}" \
+  --task-titles "${task1_title}" \
   --runs-per-task "${#task1_ids[@]}" \
   --metric "${metric}" \
   --x-axis "${x_axis}" \
@@ -131,5 +87,5 @@ python3 plots/wandb_plots_multi_tasks.py \
   --suptitle "${suptitle}" \
   --errorbar ci \
   --max-steps 1000000 \
-  --dim-colors 1 \
+  --dim-colors "${dim_colors}" \
   "${extra_args[@]}"

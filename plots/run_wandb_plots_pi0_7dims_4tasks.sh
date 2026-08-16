@@ -16,46 +16,39 @@ entity="noragorhan-karlsruhe-institute-of-technology"
 seeds_per_method=2
 
 task1_ids=(
-  "dsrl_pi05_libero_90_task29_2026_07_31_08_03_38_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task29_2026_08_12_13_28_23_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task29_2026_07_31_08_04_03_0000--s-0_baseline_7dims"
-  "dsrl_pi05_libero_90_task29_2026_08_12_13_18_25_0000--s-0_baseline_7dims"
-  "dsrl_pi05_libero_90_task29_2026_07_31_08_06_09_0000--s-0_chunkrewardcriticactor_mlp_7dims"
-  "dsrl_pi05_libero_90_task29_2026_08_13_07_44_58_0000--s-0_chunkrewardcriticactor_mlp_7dims"
+  "dsrl_pi0_libero_90_task29_2026_08_12_15_54_29_0000--s-0_baseline"
+  ""
+  "dsrl_pi0_libero_90_task29_2026_08_12_15_54_25_0000--s-0_baseline_7dims"
+  ""
 )
 task1_title="Task 29"
 
-
-# --- Task 2 ---
 task2_ids=(
-  "dsrl_pi05_libero_90_task38_2026_07_31_08_02_00_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task38_2026_07_30_08_07_34_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task38_2026_07_30_08_01_40_0000--s-0_baseline_only7dims"
-  "dsrl_pi05_libero_90_task38_2026_07_31_08_02_05_0000--s-0_baseline_7dims"
-  "dsrl_pi05_libero_90_task38_2026_07_30_17_24_53_0000--s-0_chunkrewardcriticactor_mlp_7dims"
-  "dsrl_pi05_libero_90_task38_2026_08_13_07_44_58_0000--s-0_chunkrewardcriticactor_mlp_7dims"
+  "dsrl_pi0_libero_90_task33_2026_08_02_14_39_26_0000--s-0_baseline"
+  ""
+  "dsrl_pi0_libero_90_task33_2026_08_02_12_54_10_0000--s-0_baseline_7dims"
+  ""
 )
-task2_title="Task 38"
+task2_title="Task 33"
 
+# --- Task 1 ---
 task3_ids=(
-  "dsrl_pi05_libero_90_task43_2026_07_30_07_38_49_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task43_2026_08_12_13_45_39_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task43_2026_07_30_07_40_22_0000--s-0_baseline_only7dims"
-  "dsrl_pi05_libero_90_task43_2026_08_12_13_15_56_0000--s-0_baseline_7dims"
-  "dsrl_pi05_libero_90_task43_2026_07_30_10_12_54_0000--s-0_chunkrewardcriticactor_mlp_7dims"
-  "dsrl_pi05_libero_90_task43_2026_08_13_07_44_58_0000--s-0_chunkrewardcriticactor_mlp_7dims"
+  "dsrl_pi0_libero_90_task38_2026_08_02_13_18_03_0000--s-0_baseline"
+  ""
+  "dsrl_pi0_libero_90_task38_2026_08_02_12_57_05_0000--s-0_baseline_7dims"
+  ""
 )
-task3_title="Task 43"
+task3_title="Task 38"
 
 task4_ids=(
-  "dsrl_pi05_libero_90_task64_2026_07_30_18_02_06_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task64_2026_07_30_08_09_38_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task64_2026_07_30_07_59_18_0000--s-0_baseline_only7dims"
-  "dsrl_pi05_libero_90_task64_2026_07_31_07_59_42_0000--s-0_baseline_7dims"
-  "dsrl_pi05_libero_90_task64_2026_07_30_15_25_17_0000--s-0_chunkrewardcriticactor_mlp_7dims"
-  "dsrl_pi05_libero_90_task64_2026_07_30_17_25_51_0000--s-0_chunkrewardcriticactor_mlp_7dims"
+  "dsrl_pi0_libero_90_task47_2026_08_12_15_32_54_0000--s-0_baseline"
+  ""
+  "dsrl_pi0_libero_90_task47_2026_08_12_15_32_54_0000--s-0_baseline_7dims"
+  ""
 )
-task4_title="Task 64"
+task4_title="Task 47"
+
+
 
 # ---------------------------------------------------------------------------
 # Shared legend labels — runs at position i within a task block belong to
@@ -65,7 +58,6 @@ task4_title="Task 64"
 method_labels=(
   "DSRL-SAC (Baseline)"
   "RDS"
-  "T-RDS"
 )
 
 all_task_ids=(
@@ -87,8 +79,8 @@ done
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-suptitle="\$\pi_{0.5}\$ LIBERO-90"
-output="plots/plots_multi_tasks/pi05_libero90_7dims_chunk_correct_names.svg"
+suptitle="\$\pi_0\$ LIBERO-90"
+output="plots/plots_multi_tasks/pi0_libero90_7dims.svg"
 show_plot=0
 ymin=0.0
 ymax=1.0
