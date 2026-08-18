@@ -187,6 +187,7 @@ class AutoregressiveActorTransformer(nn.Module):
     low: Optional[float] = None
     high: Optional[float] = None
     use_actor_diff_mean: bool = False
+    residual_bound: float = 1.0
 
     def setup(self):
         self.context_proj = nn.Dense(self.d_model, use_bias=False)
@@ -249,7 +250,7 @@ class AutoregressiveActorTransformer(nn.Module):
         return mu, log_std, jnp.exp(log_std)
     
     def _residual_head(self, h: jnp.ndarray) -> jnp.ndarray:
-        return jnp.tanh(self.residual_out(h))   # [B, action_dim]
+        return self.residual_bound*jnp.tanh(self.residual_out(h))   # [B, action_dim]
 
     def _residual_mean_std_head(self, h: jnp.ndarray) -> jnp.ndarray:
         out = self.residual_mean_std_out(h)

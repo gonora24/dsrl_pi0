@@ -70,6 +70,7 @@ if __name__ == '__main__':
     parser.add_argument('--actor_transformer_n_layers', default=3, help='actor transformer number of layers', type=int)
     parser.add_argument('--actor_transformer_n_heads', default=4, help='actor transformer number of heads', type=int)
     parser.add_argument('--actor_transformer_dropout', default=0.1, help='actor transformer dropout', type=float)
+    parser.add_argument('--residual_bound', default=1.0, help='bound (tanh scale) for the AR actor residual head', type=float)
     parser.add_argument('--clip_actor_grad_norm', default=0.0, help='clip actor gradient norm', type=float)
     parser.add_argument('--clip_critic_grad_norm', default=0.0, help='clip critic gradient norm', type=float)
     parser.add_argument('--libero_suite', default="libero_90", help='libero task suite', type=str)
