@@ -384,6 +384,7 @@ def main(variant):
             freeze_latent_models=variant.freeze_latent_models,
             only_predict_dims_until=variant.only_predict_dims_until,
             backup_entropy=bool(variant.backup_entropy),
+            use_mlp_action_space_critic=bool(variant.use_mlp_action_space_critic),
             **train_kwargs,
         )
     else:

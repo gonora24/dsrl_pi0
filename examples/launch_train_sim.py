@@ -36,6 +36,7 @@ if __name__ == '__main__':
              'Requires --chunk_reward 1.',
     )
     parser.add_argument('--use_chunky_actor_critic', default=0, help='use full (pi0_action_horizon x 32) noise for actor+critic; requires query_freq == pi0 horizon. If off, actor outputs 32-d noise repeated to pi0 length.', type=int)
+    parser.add_argument('--use_mlp_action_space_critic', default=0, help='use mlp action space critic', type=int)
     parser.add_argument('--num_noise_vectors', default=1, type=int,
         help='Number of independent noise vectors the actor predicts (N). '
              'Total SAC action dim = N * dsrl_action_dim. '

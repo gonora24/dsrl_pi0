@@ -193,7 +193,8 @@ class DSRLNALearner(Agent):
                  pi0_microbatch_size: int = 0,
                  only_predict_dims_until: int = 0,
                  freeze_latent_models: int = 0,
-                 backup_entropy: bool = False,
+                 backup_entropy: bool = False,  
+                 use_mlp_action_space_critic: bool = False,
     ):
         self.aug_next=aug_next
         self.color_jitter = color_jitter
@@ -211,6 +212,7 @@ class DSRLNALearner(Agent):
         self._step = 0
         self.only_predict_dims_until = only_predict_dims_until
         self.backup_entropy = backup_entropy
+        self.use_mlp_action_space_critic = use_mlp_action_space_critic
         if use_chunky_actor_critic and only_predict_dims_until == -1:
             # Normal chunky mode
             self.action_horizon = pi0_action_horizon
@@ -275,12 +277,18 @@ class DSRLNALearner(Agent):
                                   params=noise_actor_params,
                                   tx=noise_actor_tx,
                                   batch_stats=noise_actor_batch_stats)
-
-        noise_critic_net = StateActionEnsemble(
-                critic_hidden_dims,
+        if use_mlp_action_space_critic:
+            noise_critic_net = StateActionEnsemble(
+                hidden_dims,
                 num_qs=num_qs,
                 use_chunky_actor_critic=_critic_is_chunky,
             )
+        else:
+            noise_critic_net = StateActionEnsemble(
+                    critic_hidden_dims,
+                    num_qs=num_qs,
+                    use_chunky_actor_critic=_critic_is_chunky,
+                )
         noise_critic_def = PixelMultiplexer(encoder=encoder_def,
                                       network=noise_critic_net,
                                       latent_dim=latent_dim,
@@ -313,18 +321,25 @@ class DSRLNALearner(Agent):
                                    )
 
         state_dim = int(np.prod(observations['state'].shape[1:]))
-        na_critic_net = CriticGPTEnsemble(
-                state_dim=state_dim,
-                image_dim=latent_dim,
-                action_horizon=pi0_action_horizon,
-                n_embd=transformer_n_embd,
-                n_head=transformer_n_head,
-                n_layer=transformer_n_layer,
-                dropout=dropout_rate or 0.0,
-                weight_norm=transformer_weight_norm,
-                use_bias=transformer_use_bias,
+        if use_mlp_action_space_critic:
+            na_critic_net = StateActionEnsemble(
+                critic_hidden_dims,
                 num_qs=num_qs,
+                use_chunky_actor_critic=_critic_is_chunky,
             )
+        else:
+            na_critic_net = CriticGPTEnsemble(
+                    state_dim=state_dim,
+                    image_dim=latent_dim,
+                    action_horizon=pi0_action_horizon,
+                    n_embd=transformer_n_embd,
+                    n_head=transformer_n_head,
+                    n_layer=transformer_n_layer,
+                    dropout=dropout_rate or 0.0,
+                    weight_norm=transformer_weight_norm,
+                    use_bias=transformer_use_bias,
+                    num_qs=num_qs,
+                )
         na_critic_def = PixelMultiplexer(encoder=encoder_def,
                                       network=na_critic_net,
                                       latent_dim=latent_dim,
@@ -420,7 +435,8 @@ class DSRLNALearner(Agent):
             'action_dim': self.action_dim,
             'action_chunk_shape': self.action_chunk_shape,
             'step': self._step,
-            'backup_entropy': self.backup_entropy,
+            'backup_entropy': self.backup_entropy,  
+            'use_mlp_action_space_critic': self.use_mlp_action_space_critic,
         }
 
     def _infer_pi0_actions(

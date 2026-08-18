@@ -302,7 +302,7 @@ class PixelSACLearner(Agent):
                 state_dim=state_dim,
                 image_dim=latent_dim,
                 action_dim=dsrl_action_dim,
-                chunk_size=pi0_action_horizon,
+                chunk_size=self.action_horizon,
                 d_model=actor_transformer_d_model,
                 n_layers=actor_transformer_n_layers,
                 n_heads=actor_transformer_n_heads,
