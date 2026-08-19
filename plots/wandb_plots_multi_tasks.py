@@ -49,7 +49,7 @@ COLOR_MAP = {
     "Chunked Critic Transformer + Autoregressive Actor Transformer": "#009E73",
 }
 METHOD_COLORS = [
-    # "#D55E00",  # Baseline
+    "#D55E00",  # Baseline
     "#00bed5",  # Method 2
     "#0041d6",  # Method 3
     "#003756",  # Method 4  005889
@@ -414,9 +414,9 @@ def plot_multi_task(
 
     n_legend_cols = min(len(all_labels), 2)
     if len(task_titles) in (5, 6):
-        fig.tight_layout(rect=[0, 0.08, 1, 1])
+        fig.tight_layout(rect=[0, 0.10, 1, 1])
     elif len(all_labels) > 4:
-        fig.tight_layout(rect=[0, 0.18, 1, 1])
+        fig.tight_layout(rect=[0, 0.20, 1, 1])
     else:
         fig.tight_layout(rect=[0, 0.15, 1, 1])
 
