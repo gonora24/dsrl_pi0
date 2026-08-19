@@ -2,7 +2,7 @@
 #SBATCH --ntasks=1
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1 
-#SBATCH --job-name=dsrl_pi05_libero_90_task59_diff_criticgpt_aractor
+#SBATCH --job-name=pi05_l90_task59_diffnois7dim0.1bound
 
 module load devel/miniforge
 conda deactivate
@@ -39,7 +39,7 @@ python3 examples/launch_train_sim.py \
 --algorithm pixel_sac \
 --env libero \
 --prefix dsrl_pi05_libero_90_task59 \
---suffix criticgpt_diffaractor_10replan_clipaction_tanhresidual_freezeresidual100k \
+--suffix criticgpt_aractor_diff_0.1bound \
 --wandb_project ${proj_name} \
 --batch_size 256 \
 --discount 0.999 \
@@ -74,8 +74,9 @@ python3 examples/launch_train_sim.py \
 --actor_transformer_dropout 0.0 \
 --use_actor_diff 1 \
 --marginalize_logprobs 0 \
---freeze_residual_steps 100000 \
 --clip_actor_grad_norm 1000.0 \
 --clip_critic_grad_norm 1000.0 \
-
+--use_actor_diff_mean 0 \
+--residual_bound 0.1 \
+# --only_predict_dims_until 7 \
 ## batch size 256, multi grad step 20, hidden dims 50, entropy scaling is auto

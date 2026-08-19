@@ -148,6 +148,8 @@ class PixelSACLearner(Agent):
                  actor_transformer_n_heads: int = 4,
                  actor_transformer_dropout: float = 0.1,
                  residual_bound: float = 1.0,
+                 residual_mean_bound: float = 0.3,
+                 residual_log_std_bound: float = 2.0,
                  clip_actor_grad_norm: float = 0.0,
                  clip_critic_grad_norm: float = 0.0,
                  marginalize_logprobs: bool = False,
@@ -314,6 +316,8 @@ class PixelSACLearner(Agent):
                 high=action_magnitude,
                 use_actor_diff_mean=use_actor_diff_mean,
                 residual_bound=residual_bound,
+                residual_mean_bound=residual_mean_bound,
+                residual_log_std_bound=residual_log_std_bound,
             )
 
         else:
@@ -456,6 +460,8 @@ class PixelSACLearner(Agent):
             'actor_transformer_n_heads': actor_transformer_n_heads,
             'actor_transformer_dropout': actor_transformer_dropout,
             'residual_bound': residual_bound,
+            'residual_mean_bound': residual_mean_bound,
+            'residual_log_std_bound': residual_log_std_bound,
             'use_chunk_actor_transformer': use_chunk_actor_transformer,
             'marginalize_logprobs': marginalize_logprobs,
             'use_actor_diff': use_actor_diff,
@@ -670,6 +676,8 @@ class PixelSACLearner(Agent):
             actor_transformer_n_heads=cfg['actor_transformer_n_heads'],
             actor_transformer_dropout=cfg['actor_transformer_dropout'],
             residual_bound=cfg.get('residual_bound', 1.0),
+            residual_mean_bound=cfg.get('residual_mean_bound', 0.3),
+            residual_log_std_bound=cfg.get('residual_log_std_bound', 2.0),
             use_chunk_actor_transformer=cfg['use_chunk_actor_transformer'],
             marginalize_logprobs=cfg['marginalize_logprobs'],
             use_actor_diff=cfg['use_actor_diff'],

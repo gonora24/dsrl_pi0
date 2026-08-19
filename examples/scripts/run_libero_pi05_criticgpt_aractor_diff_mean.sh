@@ -2,7 +2,7 @@
 #SBATCH --ntasks=1
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1 
-#SBATCH --job-name=pi05_l90_task12_diffmean7dims
+#SBATCH --job-name=pi05_l90_task43_diffmean7dims0.1bound
 
 module load devel/miniforge
 conda deactivate
@@ -13,7 +13,7 @@ export WANDB_USERNAME='noragorhan'
 export WANDB_TEAM='noragorhan-karlsruhe-institute-of-technology'
 proj_name=DSRL_pi0_Libero
 device_id=0
-wandb_mode=online  # online or offline
+wandb_mode=offline  # online or offline
 export WANDB_MODE=${wandb_mode}
 
 export OUTPUT_DIR=/pfs/work9/workspace/scratch/ka_eu3660-rlinf_tmp/DSRL_pi0_Libero
@@ -38,8 +38,8 @@ pip install "transformers==4.53.2"
 python3 examples/launch_train_sim.py \
 --algorithm pixel_sac \
 --env libero \
---prefix dsrl_pi05_libero_90_task12 \
---suffix criticgpt_aractor_diff_mean_7dims \
+--prefix dsrl_pi05_libero_90_task43 \
+--suffix criticgpt_aractor_diff_mean_7dims_0.1bound \
 --wandb_project ${proj_name} \
 --batch_size 256 \
 --discount 0.999 \
@@ -56,7 +56,7 @@ python3 examples/launch_train_sim.py \
 --query_freq 10 \
 --hidden_dims 128 \
 --libero_suite "libero_90" \
---libero_task_id 12 \
+--libero_task_id 43 \
 --pi0_checkpoint pi05_libero \
 --critic_hidden_dims 512 256 128 \
 --chunk_reward 1 \
@@ -78,5 +78,6 @@ python3 examples/launch_train_sim.py \
 --clip_critic_grad_norm 1000.0 \
 --use_actor_diff_mean 1 \
 --only_predict_dims_until 7 \
+--residual_bound 0.1 \
 
 ## batch size 256, multi grad step 20, hidden dims 50, entropy scaling is auto

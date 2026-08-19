@@ -188,6 +188,8 @@ class AutoregressiveActorTransformer(nn.Module):
     high: Optional[float] = None
     use_actor_diff_mean: bool = False
     residual_bound: float = 1.0
+    residual_mean_bound: float = 0.3
+    residual_log_std_bound: float = 2.0
 
     def setup(self):
         self.context_proj = nn.Dense(self.d_model, use_bias=False)
@@ -254,8 +256,10 @@ class AutoregressiveActorTransformer(nn.Module):
 
     def _residual_mean_std_head(self, h: jnp.ndarray) -> jnp.ndarray:
         out = self.residual_mean_std_out(h)
-        residual_mean, residual_std = jnp.split(out, 2, axis=-1)
-        return residual_mean, residual_std   # [B, action_dim]
+        residual_mean, residual_log_std = jnp.split(out, 2, axis=-1)
+        residual_mean = jnp.clip(residual_mean, -self.residual_mean_bound, self.residual_mean_bound)
+        residual_log_std = jnp.clip(residual_log_std, -self.residual_log_std_bound, self.residual_log_std_bound)
+        return residual_mean, residual_log_std   # [B, action_dim]
 
     def _pos_embed(self, idx: jnp.ndarray) -> jnp.ndarray:
         """Look up positional embedding(s). idx: integer or [K] array."""
