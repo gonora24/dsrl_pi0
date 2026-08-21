@@ -50,10 +50,14 @@ METHOD_COLORS = [
 ]
 
 DIM_COLORS = [
-    "#D55E00",
-    "#5e00d5",
-    "#d50077",
-    "#005889",
+    # "#D55E00",
+    "#5e00d5",  # rds
+    # "#d50077",  # t-rds
+    "#005889",  # gt-rds
+    # "#e691a6",  # t-rds residual noise 
+    # "#560030",  # t-rds residual mean
+    "#003d35",  # gt-rds residual noise
+    "#00d599",  # gt-rds residual mlp
 ]
 
 
@@ -400,7 +404,7 @@ def plot_multi_task(
         Line2D([0], [0], color=palette[lbl], linewidth=2.5, label=lbl)
         for lbl in all_labels
     ]
-    n_legend_cols = min(len(all_labels), 1)
+    n_legend_cols = min(len(all_labels), 2)
     fig.tight_layout(rect=[0, 0.28, 1, 1])
     # fig.tight_layout(rect=[0, 0.23, 1, 1])
     # fig.tight_layout(rect=[0, 0.18, 1, 1])

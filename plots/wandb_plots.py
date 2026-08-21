@@ -43,8 +43,8 @@ OKABE_ITO = [
 ]
 
 COLOR_MAP = {
-    "DSRL-SAC Baseline": "#D55E00",  # orange 
-    "Chunked MLP Critic + MLP Actor": "#0072B2",          # blue
+    "DSRL-SAC (Baseline)": "#D55E00",  # orange 
+    "FDTS-Chunk MLP Actor + MLP Critic (hidden dim 2048)": "#00bed5",          # blue
     "Chunked Critic Transformer + MLP Actor": "#56B4E9",    # sky blue
     "Chunked Critic Transformer + Autoregressive Actor Transformer": "#009E73", # bluish green     
 }
@@ -58,7 +58,7 @@ def setup_plot_style():
     plt.rcParams.update({
         "font.family": "DejaVu Sans",
 
-        "axes.titlesize": 14,
+        "axes.titlesize": 20,
         "axes.labelsize": 11,
         "xtick.labelsize": 10,
         "ytick.labelsize": 10,
@@ -299,7 +299,7 @@ def plot_success_rates(
     setup_plot_style()
     n_runs = df["label"].nunique()
     hue_order = df["label"].drop_duplicates().tolist()
-    fig, ax = plt.subplots(figsize=(10, 7))
+    fig, ax = plt.subplots(figsize=(7, 5))
 
     sns.lineplot(
         data=df,
@@ -320,7 +320,7 @@ def plot_success_rates(
 
     ax.set_xlabel("Training Steps")
     ax.set_ylabel(metric_ylabel(metric))
-    text =ax.set_title(title or "Evaluation success rate", pad=10)
+    text =ax.set_title(title or "Evaluation success rate", pad=15)
     print(text.get_fontproperties().get_size())
     print(text.get_fontproperties().get_name())
     ax.tick_params(
@@ -360,7 +360,7 @@ def plot_success_rates(
     ax.legend(
         loc="upper center",
         bbox_to_anchor=(0.5, -0.22),
-        ncol=min(n_runs, 2),
+        ncol=min(n_runs, 1),
         frameon=True,
         fancybox=False,      # square corners
         framealpha=1.0,      # opaque
