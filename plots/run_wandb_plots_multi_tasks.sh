@@ -27,6 +27,7 @@ task1_ids=(
   ""
 )
 task1_title="Task 31"
+task1_sft=""  # SFT baseline success rate for this task; leave "" to skip
 
 # --- Task 2: seeds_per_method × 4 methods ---
 task2_ids=(
@@ -44,6 +45,7 @@ task2_ids=(
   ""
 ) #dsrl_pi05_libero_90_task38_2026_08_03_22_24_57_0000--s-0_criticgpt_aractor_10replan
 task2_title="Task 38"
+task2_sft=""  # SFT baseline success rate for this task; leave "" to skip
 
 # --- Task 3 ---
 task3_ids=(
@@ -61,6 +63,7 @@ task3_ids=(
   ""
 ) #dsrl_pi05_libero_90_task43_2026_08_03_22_08_28_0000--s-0_criticgpt_aractor_10replan
 task3_title="Task 43"
+task3_sft=""  # SFT baseline success rate for this task; leave "" to skip
 
 # --- Task 4 ---
 task4_ids=(
@@ -74,6 +77,7 @@ task4_ids=(
   ""
 ) #dsrl_pi05_libero_90_task64_2026_08_03_22_08_28_0000--s-0_criticgpt_aractor_10replan
 task4_title="Task 64"
+task4_sft=""  # SFT baseline success rate for this task; leave "" to skip
 
 # ---------------------------------------------------------------------------
 # Shared legend labels — runs at position i within a task block belong to
@@ -92,6 +96,13 @@ all_task_ids=(
   "${task2_ids[@]}"
   "${task3_ids[@]}"
   "${task4_ids[@]}"
+)
+
+sft_baselines=(
+  "${task1_sft}"
+  "${task2_sft}"
+  "${task3_sft}"
+  "${task4_sft}"
 )
 
 labels=()
@@ -141,4 +152,5 @@ python3 plots/wandb_plots_multi_tasks.py \
   --suptitle "${suptitle}" \
   --errorbar ci \
   --max-steps "${max_steps}" \
+  --sft-baselines "${sft_baselines[@]}" \
   "${extra_args[@]}"

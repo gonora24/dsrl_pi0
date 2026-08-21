@@ -139,7 +139,10 @@ def evaluate_suite(args):
 
     benchmark_dict = benchmark.get_benchmark_dict()
     task_suite = benchmark_dict[args.libero_suite]()
-    num_tasks = task_suite.n_tasks
+    if len(args.task_ids) > 0:
+        num_tasks = len(args.task_ids)
+    else:
+        num_tasks = task_suite.n_tasks
 
     openpi_train_config = _resolve_openpi_config(args.pi0_checkpoint)
     checkpoint_dir = _load_pi0_checkpoint(args.pi0_checkpoint)
@@ -156,24 +159,45 @@ def evaluate_suite(args):
 
     rng = jax.random.PRNGKey(args.seed)
     task_results = []
-    for task_id in tqdm(range(num_tasks), desc="tasks"):
-        task = task_suite.get_task(task_id)
-        print(f"\nTask {task_id}/{num_tasks - 1}: {task.language}", flush=True)
-        rng, task_result = evaluate_task(
-            task_id,
-            task,
-            task_suite,
-            policy,
-            args,
-            openpi_train_config,
-            rng,
-        )
-        task_results.append(task_result)
-        print(
-            f"Task success rate: {task_result['success_rate']:.1%} "
-            f"({task_result['successes']}/{task_result['num_rollouts']})",
-            flush=True,
-        )
+    if len(args.task_ids) > 0:
+        for task_id in args.task_ids:
+            task = task_suite.get_task(task_id)
+            print(f"\nTask {task_id}/{num_tasks - 1}: {task.language}", flush=True)
+            rng, task_result = evaluate_task(
+                task_id,
+                task,
+                task_suite,
+                policy,
+                args,
+                openpi_train_config,
+                rng,
+            )
+            task_results.append(task_result)
+            print(
+                f"Task success rate: {task_result['success_rate']:.1%} "
+                f"({task_result['successes']}/{task_result['num_rollouts']})",
+                flush=True,
+            )
+        overall_success_rate = float(np.mean([r["success_rate"] for r in task_results]))
+    else:
+        for task_id in tqdm(range(num_tasks), desc="tasks"):
+            task = task_suite.get_task(task_id)
+            print(f"\nTask {task_id}/{num_tasks - 1}: {task.language}", flush=True)
+            rng, task_result = evaluate_task(
+                task_id,
+                task,
+                task_suite,
+                policy,
+                args,
+                openpi_train_config,
+                rng,
+            )
+            task_results.append(task_result)
+            print(
+                f"Task success rate: {task_result['success_rate']:.1%} "
+                f"({task_result['successes']}/{task_result['num_rollouts']})",
+                flush=True,
+            )
 
     overall_success_rate = float(np.mean([r["success_rate"] for r in task_results]))
     summary = {
@@ -248,6 +272,13 @@ def parse_args(argv=None):
         default="",
         type=str,
         help="Optional path to write JSON results",
+    )
+    parser.add_argument(
+        "--task_ids",
+        default=[],
+        type=int,
+        nargs="+",
+        help="Optional list of task IDs to evaluate",
     )
     return parser.parse_args(argv)
 

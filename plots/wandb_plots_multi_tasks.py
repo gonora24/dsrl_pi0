@@ -288,6 +288,7 @@ def plot_multi_task(
     max_steps: float | None = None,
     label_mapping: dict[str, str] = {},
     dim_colors: int = 0,
+    sft_baselines: list[float | None] | None = None,
 ) -> None:
     setup_plot_style()
 
@@ -366,6 +367,17 @@ def plot_multi_task(
             errorbar=None if errorbar == "none" else errorbar,
         )
 
+        # Assign z-order/clipping to the method lines before adding the SFT
+        # baseline line, so the loop below doesn't clobber its explicit z-order.
+        n_lines = len(ax.lines)
+        for i, line in enumerate(ax.lines):
+            line.set_zorder(3 + n_lines - i)
+            line.set_clip_on(False)
+
+        sft_value = sft_baselines[idx] if sft_baselines is not None else None
+        if sft_value is not None:
+            ax.axhline(y=sft_value, color="0.4", linestyle="--", linewidth=2.0, zorder=2)
+
         # Use the requested cap (if any) as the axis ceiling rather than the
         # actual last sampled step. wandb's history() sub-samples points, so
         # the last row after filtering to `max_steps` can land slightly below
@@ -388,11 +400,6 @@ def plot_multi_task(
         ax.grid(which="major", color="0.90", linewidth=0.8)
         sns.despine(ax=ax)
 
-        n_lines = len(ax.lines)
-        for i, line in enumerate(ax.lines):
-            line.set_zorder(3 + n_lines - i)
-            line.set_clip_on(False)
-
     # If we have fewer subplots than grid cells (e.g. 5 tasks in a 3x2 grid),
     # hide the leftover axes so their cell renders as blank space while the
     # overall grid layout/spacing stays identical to the full grid.
@@ -412,10 +419,16 @@ def plot_multi_task(
         for lbl in all_labels
     ]
 
-    n_legend_cols = min(len(all_labels), 2)
+    has_sft = sft_baselines is not None and any(v is not None for v in sft_baselines)
+    if has_sft:
+        legend_handles.append(
+            Line2D([0], [0], color="0.4", linewidth=2.0, linestyle="--", label="SFT (Baseline)")
+        )
+
+    n_legend_cols = min(len(legend_handles), 2)
     if len(task_titles) in (5, 6):
         fig.tight_layout(rect=[0, 0.10, 1, 1])
-    elif len(all_labels) > 4:
+    elif len(legend_handles) > 4:
         fig.tight_layout(rect=[0, 0.20, 1, 1])
     else:
         fig.tight_layout(rect=[0, 0.15, 1, 1])
@@ -577,7 +590,26 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Use dimension-specific colors (default: 0).",
     )
+    parser.add_argument(
+        "--sft-baselines",
+        nargs="+",
+        default=None,
+        help=(
+            "Optional per-task SFT baseline success-rate values, one per task, in the "
+            "same order as --task-titles. Use an empty string to skip a task."
+        ),
+    )
     return parser
+
+
+def parse_sft_baselines(raw: list[str] | None, n_tasks: int) -> list[float | None]:
+    if raw is None:
+        return [None] * n_tasks
+    if len(raw) != n_tasks:
+        raise ValueError(
+            f"--sft-baselines has {len(raw)} entries but {n_tasks} tasks were provided."
+        )
+    return [float(v) if v.strip() != "" else None for v in raw]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -601,6 +633,12 @@ def main(argv: list[str] | None = None) -> int:
             f"inferred from --identifiers / --runs-per-task.",
             file=sys.stderr,
         )
+        return 1
+
+    try:
+        sft_baselines = parse_sft_baselines(args.sft_baselines, n_tasks)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         return 1
 
     entity = configure_wandb_auth(args.entity)
@@ -640,6 +678,7 @@ def main(argv: list[str] | None = None) -> int:
         max_steps=args.max_steps,
         label_mapping=label_mapping,
         dim_colors=args.dim_colors,
+        sft_baselines=sft_baselines,
     )
     return 0
 

@@ -8,7 +8,7 @@
 set -euo pipefail
 
 suite="libero_90"
-num_rollouts="${2:-10}"
+num_rollouts="100"
 
 module load devel/miniforge 2>/dev/null || true
 conda deactivate 2>/dev/null || true
@@ -25,5 +25,6 @@ python3 examples/eval_pi05_libero.py \
   --libero_suite "${suite}" \
   --num_rollouts "${num_rollouts}" \
   --query_freq 5 \
-  --pi0_checkpoint pi05_libero \
-  --seed 0
+  --pi0_checkpoint pi05_base \
+  --seed 0 \
+  --task_ids 28 29 31 33 38 43 59 60 64 77

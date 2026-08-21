@@ -45,6 +45,7 @@ OKABE_ITO = [
 METHOD_COLORS = [
     "#D55E00",  # Baseline
     "#00bed5",  # Method 2
+    "#d50053", # only for ablation overlapping
     "#0041d6",  # Method 3
     "#003756",  # Method 4  005889
 ]
@@ -405,7 +406,7 @@ def plot_multi_task(
         for lbl in all_labels
     ]
     n_legend_cols = min(len(all_labels), 2)
-    fig.tight_layout(rect=[0, 0.28, 1, 1])
+    fig.tight_layout(rect=[0, 0.20, 1, 1])
     # fig.tight_layout(rect=[0, 0.23, 1, 1])
     # fig.tight_layout(rect=[0, 0.18, 1, 1])
     fig.legend(
