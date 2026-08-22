@@ -22,8 +22,11 @@ task1_ids=(
   ""
   "dsrl_pi05_libero_90_task59_2026_07_07_14_13_06_0000--s-0_chunkycriticactor_mlp_singlereward_10replan_criticdim512_256_128"
   ""
+  "dsrl_pi05_libero_90_task59_2026_07_07_09_46_10_0000--s-0_chunkrewardcriticactor_mlp_10replan_criticdim512_256_128"
+  ""
 )
 task1_title="Task 59"
+task1_sft="0.34"
 
 
 # ---------------------------------------------------------------------------
@@ -33,8 +36,9 @@ task1_title="Task 59"
 # ---------------------------------------------------------------------------
 method_labels=(
   "DSRL-SAC (Baseline)"
-  "Repeat MLP Actor + MLP Critic (Chunk Reward)"
+  "DSRL-SAC (Chunk Reward)"
   "FDTS-Chunk MLP Actor + MLP Critic (Single Reward)"
+  "FDTS-Chunk MLP Actor + MLP Critic (Chunk Reward)"
 )
 
 all_task_ids=(
@@ -88,4 +92,5 @@ python3 plots/wandb_plots_two_tasks.py \
   --errorbar ci \
   --max-steps 1000000 \
   --dim-colors "${dim_colors}" \
+  --sft-baselines "${task1_sft}" \
   "${extra_args[@]}"

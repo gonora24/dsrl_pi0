@@ -82,7 +82,7 @@ method_labels=(
   ""
   "FDTS-Residual-Noise (no freezing)"
   "FDTS-Residual-Noise (with freezing)"
-  "FDTS-Residual-Mean (no freezing)"
+  "FDTS-Residual-Distribution (no freezing)"
 )
 
 all_task_ids=(
@@ -138,4 +138,5 @@ python3 plots/wandb_plots_multi_tasks.py \
   --suptitle "${suptitle}" \
   --errorbar ci \
   --max-steps 800000 \
+  --residual-colors 1 \
   "${extra_args[@]}"

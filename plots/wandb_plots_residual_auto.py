@@ -44,9 +44,9 @@ OKABE_ITO = [
 
 COLOR_MAP = {
     "DSRL-SAC (Baseline)": "#D55E00",
-    "FDTS-Residual-Noise (no freezing)": "#00bed5",
-    "FDTS-Residual-Noise (with freezing)": "#0041d6",
-    "FDTS-Residual-Mean (no freezing)": "#003756",
+    "FDTS-Residual-Noise (no freezing)": "#005A50",
+    "FDTS-Residual-Noise (with freezing)": "#00a76a",
+    "FDTS-Residual-Distribution (no freezing)": "#89c200",
 }
 
 
@@ -206,7 +206,13 @@ def fetch_run_history(
     try:
         run = api.run(run_path)
     except wandb.errors.CommError as exc:
-        raise ValueError(f"Could not find run {identifier!r} in {project!r}.") from exc
+        try:
+            entity = "noras-masterarbeit"
+            project = "DSRL_pi05_Libero"
+            run_path = f"{entity}/{project}/{identifier}" if entity else f"{project}/{identifier}"
+            run = api.run(run_path)
+        except wandb.errors.CommError as exc:
+            raise ValueError(f"Could not find run {identifier!r} in {project!r}.") from exc
     if metric not in run.summary:
         metric2 = "evaluation/Reward >= 1"
         columns = [x_axis, metric2]
@@ -288,6 +294,7 @@ def plot_multi_task(
     clip_to_shortest: bool,
     errorbar: str = "ci",
     max_steps: float | None = None,
+    sft_baselines: list[float | None] | None = None,
 ) -> None:
     setup_plot_style()
 
@@ -349,6 +356,17 @@ def plot_multi_task(
             errorbar=None if errorbar == "none" else errorbar,
         )
 
+        # Assign z-order/clipping to the method lines before adding the SFT
+        # baseline line, so the loop below doesn't clobber its explicit z-order.
+        n_lines = len(ax.lines)
+        for i, line in enumerate(ax.lines):
+            line.set_zorder(3 + n_lines - i)
+            line.set_clip_on(False)
+
+        sft_value = sft_baselines[idx] if sft_baselines is not None else None
+        if sft_value is not None:
+            ax.axhline(y=sft_value, color="0.4", linestyle="--", linewidth=2.0, zorder=2)
+
         # Use the requested cap (if any) as the axis ceiling rather than the
         # actual last sampled step. wandb's history() sub-samples points, so
         # the last row after filtering to `max_steps` can land slightly below
@@ -370,11 +388,6 @@ def plot_multi_task(
         ax.grid(which="major", color="0.90", linewidth=0.8)
         sns.despine(ax=ax)
 
-        n_lines = len(ax.lines)
-        for i, line in enumerate(ax.lines):
-            line.set_zorder(3 + n_lines - i)
-            line.set_clip_on(False)
-
     # Shared figure title
     if suptitle:
         fig.suptitle(suptitle, y=1.01)
@@ -386,7 +399,14 @@ def plot_multi_task(
         Line2D([0], [0], color=palette[lbl], linewidth=2.5, label=lbl)
         for lbl in all_labels
     ]
-    n_legend_cols = min(len(all_labels), 2)
+
+    has_sft = sft_baselines is not None and any(v is not None for v in sft_baselines)
+    if has_sft:
+        legend_handles.insert(0,
+            Line2D([0], [0], color="0.4", linewidth=2.0, linestyle="--", label="$\pi_{0.5}$")
+        )
+
+    n_legend_cols = min(len(legend_handles), 2)
     fig.tight_layout(rect=[0, 0.19, 1, 1])
 
     fig.legend(
@@ -540,7 +560,26 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Maximum number of steps to plot (default: None).",
     )
+    parser.add_argument(
+        "--sft-baselines",
+        nargs="+",
+        default=None,
+        help=(
+            "Optional per-task SFT baseline success-rate values, one per task, in the "
+            "same order as --task-titles. Use an empty string to skip a task."
+        ),
+    )
     return parser
+
+
+def parse_sft_baselines(raw: list[str] | None, n_tasks: int) -> list[float | None]:
+    if raw is None:
+        return [None] * n_tasks
+    if len(raw) != n_tasks:
+        raise ValueError(
+            f"--sft-baselines has {len(raw)} entries but {n_tasks} tasks were provided."
+        )
+    return [float(v) if v.strip() != "" else None for v in raw]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -564,6 +603,12 @@ def main(argv: list[str] | None = None) -> int:
             f"inferred from --identifiers / --runs-per-task.",
             file=sys.stderr,
         )
+        return 1
+
+    try:
+        sft_baselines = parse_sft_baselines(args.sft_baselines, n_tasks)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         return 1
 
     entity = configure_wandb_auth(args.entity)
@@ -601,6 +646,7 @@ def main(argv: list[str] | None = None) -> int:
         clip_to_shortest=args.clip_to_shortest_run,
         errorbar=args.errorbar,
         max_steps=args.max_steps,
+        sft_baselines=sft_baselines,
     )
     return 0
 

@@ -22,6 +22,7 @@ task1_ids=(
   ""
 )
 task1_title="Task 29"
+task1_sft="0.30"  # achtung hier replan 5
 
 task2_ids=(
   "dsrl_pi0_libero_90_task33_2026_08_02_14_39_26_0000--s-0_baseline"
@@ -30,6 +31,7 @@ task2_ids=(
   ""
 )
 task2_title="Task 33"
+task2_sft="0.38"  # achtung replan 5
 
 # --- Task 1 ---
 task3_ids=(
@@ -39,6 +41,7 @@ task3_ids=(
   ""
 )
 task3_title="Task 38"
+task3_sft="0.27"  # achtung replan 5
 
 task4_ids=(
   "dsrl_pi0_libero_90_task47_2026_08_12_15_32_54_0000--s-0_baseline"
@@ -47,7 +50,7 @@ task4_ids=(
   ""
 )
 task4_title="Task 47"
-
+task4_sft="0.53"  # achtung replan 5
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +68,13 @@ all_task_ids=(
   "${task2_ids[@]}"
   "${task3_ids[@]}"
   "${task4_ids[@]}"
+)
+
+sfts=(
+  "${task1_sft}"
+  "${task2_sft}"
+  "${task3_sft}"
+  "${task4_sft}"
 )
 
 labels=()
@@ -114,4 +124,5 @@ python3 plots/wandb_plots_multi_tasks.py \
   --errorbar ci \
   --max-steps 1000000 \
   --dim-colors 1 \
+  --sft-baselines "${sfts[@]}" \
   "${extra_args[@]}"

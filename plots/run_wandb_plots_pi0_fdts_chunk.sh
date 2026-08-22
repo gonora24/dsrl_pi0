@@ -24,6 +24,7 @@ task1_ids=(
   ""
 )
 task1_title="Task 28"
+task1_sft="0.21"
 
 # --- Task 1 ---
 task2_ids=(
@@ -35,7 +36,7 @@ task2_ids=(
   ""
 )
 task2_title="Task 29"
-
+task2_sft="0.25"
 
 
 # ---------------------------------------------------------------------------
@@ -101,4 +102,5 @@ python3 plots/wandb_plots_two_tasks.py \
   --errorbar ci \
   --max-steps 500000 \
   --dim-colors "${dim_colors}" \
+  --sft-baselines "${task1_sft}" "${task2_sft}" \
   "${extra_args[@]}"

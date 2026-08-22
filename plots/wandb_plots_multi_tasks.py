@@ -55,6 +55,13 @@ METHOD_COLORS = [
     "#003756",  # Method 4  005889
 ]
 
+RESIDUAL_COLORS = [
+    # "#D55E00",
+    "#005A50",
+    "#00a76a",
+    "#89c200",
+]
+
 DIM_COLORS = [
     "#D55E00",  # Baseline
     "#5e00d5",  # 7dims
@@ -202,7 +209,13 @@ def fetch_run_history(
     try:
         run = api.run(run_path)
     except wandb.errors.CommError as exc:
-        raise ValueError(f"Could not find run {identifier!r} in {project!r}.") from exc
+        try:
+            entity = "noras-masterarbeit"
+            project = "DSRL_pi05_Libero"
+            run_path = f"{entity}/{project}/{identifier}" if entity else f"{project}/{identifier}"
+            run = api.run(run_path)
+        except wandb.errors.CommError as exc:
+            raise ValueError(f"Could not find run {identifier!r} in {project!r}.") from exc
     metric2 = "training/residual_mean"
     if metric not in run.summary:
         columns = [x_axis, metric2]
@@ -288,6 +301,7 @@ def plot_multi_task(
     max_steps: float | None = None,
     label_mapping: dict[str, str] = {},
     dim_colors: int = 0,
+    residual_colors: int = 0,
     sft_baselines: list[float | None] | None = None,
 ) -> None:
     setup_plot_style()
@@ -313,6 +327,9 @@ def plot_multi_task(
     if dim_colors == 1:
         print("Using dimension-specific colors")
         task_palette = {lbl: DIM_COLORS[i] for i, lbl in enumerate(all_labels)}
+    elif residual_colors == 1:
+        print("Using residual-specific colors")
+        task_palette = {lbl: RESIDUAL_COLORS[i] for i, lbl in enumerate(all_labels)}
     else:
         print("Using method-specific colors")
         task_palette = {lbl: METHOD_COLORS[i] for i, lbl in enumerate(all_labels)}
@@ -421,8 +438,8 @@ def plot_multi_task(
 
     has_sft = sft_baselines is not None and any(v is not None for v in sft_baselines)
     if has_sft:
-        legend_handles.append(
-            Line2D([0], [0], color="0.4", linewidth=2.0, linestyle="--", label="SFT (Baseline)")
+        legend_handles.insert(0,
+            Line2D([0], [0], color="0.4", linewidth=2.0, linestyle="--", label="$\pi_{0.5}$")
         )
 
     n_legend_cols = min(len(legend_handles), 2)
@@ -599,6 +616,12 @@ def build_parser() -> argparse.ArgumentParser:
             "same order as --task-titles. Use an empty string to skip a task."
         ),
     )
+    parser.add_argument(
+        "--residual-colors",
+        type=int,
+        default=0,
+        help="Use residual-specific colors (default: 0).",
+    )
     return parser
 
 
@@ -678,6 +701,7 @@ def main(argv: list[str] | None = None) -> int:
         max_steps=args.max_steps,
         label_mapping=label_mapping,
         dim_colors=args.dim_colors,
+        residual_colors=args.residual_colors,
         sft_baselines=sft_baselines,
     )
     return 0

@@ -121,7 +121,7 @@ output="plots/plots_multi_tasks/pi05_libero90_fdts_chunk_2M_sixtasks.svg"
 show_plot=0
 ymin=0.0
 ymax=1.0
-ema_halflife=25000
+ema_halflife=50000
 clip_to_shortest_run=0
 max_steps=2000000
 

@@ -22,6 +22,7 @@ task1_ids=(
   "dsrl_pi05_libero_90_task29_2026_08_12_13_18_25_0000--s-0_baseline_7dims"
 )
 task1_title="Task 29"
+task1_sft="0.67"  # achtung hier replan 5
 
 # --- Task 1 ---
 task2_ids=(
@@ -31,6 +32,7 @@ task2_ids=(
   "dsrl_pi05_libero_90_task33_2026_08_12_13_18_25_0000--s-0_baseline_7dims"
 )
 task2_title="Task 33"
+task2_sft="0.92"  # achtung replan 5
 
 
 # --- Task 2 ---
@@ -41,6 +43,7 @@ task3_ids=(
   "dsrl_pi05_libero_90_task38_2026_07_31_08_02_05_0000--s-0_baseline_7dims"
 )
 task3_title="Task 38"
+task3_sft="0.34"  # SFT baseline success rate for this task (0-1 scale); leave "" to skip
 
 task4_ids=(
   "dsrl_pi05_libero_90_task43_2026_07_30_07_38_49_0000--s-0_baseline"
@@ -49,6 +52,7 @@ task4_ids=(
   "dsrl_pi05_libero_90_task43_2026_08_12_13_15_56_0000--s-0_baseline_7dims"
 )
 task4_title="Task 43"
+task4_sft="0.09"  # achtung replan 5
 
 task5_ids=(
   "dsrl_pi05_libero_90_task59_2026_06_19_16_13_16_0000--s-0_baseline"
@@ -57,6 +61,7 @@ task5_ids=(
   "dsrl_pi05_libero_90_task59_2026_08_12_13_07_58_0000--s-0_baseline_7dims"
 )
 task5_title="Task 59"
+task5_sft="0.25"  # SFT baseline success rate for this task (0-1 scale); leave "" to skip
 
 task6_ids=(
   "dsrl_pi05_libero_90_task64_2026_07_30_18_02_06_0000--s-0_baseline"
@@ -65,6 +70,8 @@ task6_ids=(
   "dsrl_pi05_libero_90_task64_2026_07_31_07_59_42_0000--s-0_baseline_7dims"
 )
 task6_title="Task 64"
+task6_sft="0.37"  # achtung replan 5
+#  "dsrl_pi05_libero_90_task64_2026_07_30_18_02_06_0000--s-0_baseline"
 
 # ---------------------------------------------------------------------------
 # Shared legend labels — runs at position i within a task block belong to
@@ -85,6 +92,14 @@ all_task_ids=(
   "${task6_ids[@]}"
 )
 
+sft_baselines=(
+  "${task1_sft}"
+  "${task2_sft}"
+  "${task3_sft}"
+  "${task4_sft}"
+  "${task5_sft}"
+  "${task6_sft}"
+)
 labels=()
 for task_ids_ref in task1_ids task2_ids task3_ids task4_ids task5_ids task6_ids; do
   declare -n _ids="$task_ids_ref"
@@ -132,4 +147,5 @@ python3 plots/wandb_plots_multi_tasks.py \
   --errorbar ci \
   --max-steps 1000000 \
   --dim-colors 1 \
+  --sft-baselines "${sft_baselines[@]}" \
   "${extra_args[@]}"

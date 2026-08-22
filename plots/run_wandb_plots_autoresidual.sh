@@ -27,10 +27,11 @@ task1_ids=(
   ""
 )
 task1_title="Task 28"
+task1_sft="0.49"  # SFT baseline success rate for this task (0-1 scale); leave "" to skip
 
 # --- Task 1 ---
 task2_ids=(
-  "dsrl_pi05_libero_90_task43_2026_07_30_07_38_49_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task43_2026_06_28_04_53_53_0000--s-0_baseline_10numqs_10replan"
   ""
   "dsrl_pi05_libero_90_task43_2026_08_05_09_15_05_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual"
   ""
@@ -41,6 +42,7 @@ task2_ids=(
   ""
 )
 task2_title="Task 43"
+task2_sft="0.14"  # SFT baseline success rate for this task (0-1 scale); leave "" to skip
 
 # --- Task 2: seeds_per_method × 4 methods ---
 task3_ids=(
@@ -57,11 +59,12 @@ task3_ids=(
   ""
 ) 
 task3_title="Task 59"
+task3_sft="0.34"  # SFT baseline success rate for this task (0-1 scale); leave "" to skip
 
 
 task4_ids=(
   # DSRL-SAC Baseline (seed 1 & 2)
-  "dsrl_pi05_libero_90_task60_2026_07_30_07_39_33_0000--s-0_baseline_only7dims"
+  "dsrl_pi05_libero_90_task60_2026_06_28_04_53_54_0000--s-0_baseline_10numqs_10replan"
   ""
   # residual without freezing
   "dsrl_pi05_libero_90_task60_2026_08_04_16_38_56_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual"
@@ -73,6 +76,7 @@ task4_ids=(
   ""
 ) 
 task4_title="Task 60"
+task4_sft="0.49"  # SFT baseline success rate for this task (0-1 scale); leave "" to skip
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +88,7 @@ method_labels=(
   "DSRL-SAC (Baseline)"
   "FDTS-Residual-Noise (no freezing)"
   "FDTS-Residual-Noise (with freezing)"
-  "FDTS-Residual-Mean (no freezing)"
+  "FDTS-Residual-Distribution (no freezing)"
 )
 
 all_task_ids=(
@@ -92,6 +96,13 @@ all_task_ids=(
   "${task2_ids[@]}"
   "${task3_ids[@]}"
   "${task4_ids[@]}"
+)
+
+sft_baselines=(
+  "${task1_sft}"
+  "${task2_sft}"
+  "${task3_sft}"
+  "${task4_sft}"
 )
 
 labels=()
@@ -140,4 +151,5 @@ python3 plots/wandb_plots_residual_auto.py \
   --suptitle "${suptitle}" \
   --errorbar ci \
   --max-steps 800000 \
+  --sft-baselines "${sft_baselines[@]}" \
   "${extra_args[@]}"

@@ -45,7 +45,7 @@ OKABE_ITO = [
 METHOD_COLORS = [
     "#D55E00",  # Baseline
     "#00bed5",  # Method 2
-    "#d50053", # only for ablation overlapping
+    # "#d50053", # only for ablation overlapping
     "#0041d6",  # Method 3
     "#003756",  # Method 4  005889
 ]
@@ -301,6 +301,7 @@ def plot_multi_task(
     errorbar: str = "ci",
     max_steps: float | None = None,
     dim_colors: int = 0,
+    sft_baselines: list[float | None] | None = None,
 ) -> None:
     setup_plot_style()
 
@@ -344,7 +345,7 @@ def plot_multi_task(
     y_top = ymax_val + top_pad
 
     n_tasks = len(processed)
-    fig, axes = plt.subplots(1, n_tasks, figsize=(7 * n_tasks, 6), sharey=True)
+    fig, axes = plt.subplots(1, n_tasks, figsize=(7 * n_tasks, 7), sharey=True)
     axes = np.atleast_1d(axes)
 
     for idx, (df, title) in enumerate(zip(processed, task_titles)):
@@ -368,6 +369,17 @@ def plot_multi_task(
             errorbar=None if errorbar == "none" else errorbar,
         )
 
+        # Assign z-order/clipping to the method lines before adding the SFT
+        # baseline line, so the loop below doesn't clobber its explicit z-order.
+        n_lines = len(ax.lines)
+        for i, line in enumerate(ax.lines):
+            line.set_zorder(3 + n_lines - i)
+            line.set_clip_on(False)
+
+        sft_value = sft_baselines[idx] if sft_baselines is not None else None
+        if sft_value is not None:
+            ax.axhline(y=sft_value, color="0.4", linestyle="--", linewidth=2.0, zorder=2)
+
         # Use the requested cap (if any) as the axis ceiling rather than the
         # actual last sampled step. wandb's history() sub-samples points, so
         # the last row after filtering to `max_steps` can land slightly below
@@ -389,11 +401,6 @@ def plot_multi_task(
         ax.grid(which="major", color="0.90", linewidth=0.8)
         sns.despine(ax=ax)
 
-        n_lines = len(ax.lines)
-        for i, line in enumerate(ax.lines):
-            line.set_zorder(3 + n_lines - i)
-            line.set_clip_on(False)
-
     # Shared figure title
     if suptitle:
         fig.suptitle(suptitle, y=1.01)
@@ -405,8 +412,15 @@ def plot_multi_task(
         Line2D([0], [0], color=palette[lbl], linewidth=2.5, label=lbl)
         for lbl in all_labels
     ]
-    n_legend_cols = min(len(all_labels), 2)
-    fig.tight_layout(rect=[0, 0.20, 1, 1])
+
+    has_sft = sft_baselines is not None and any(v is not None for v in sft_baselines)
+    if has_sft:
+        legend_handles.insert(0,
+            Line2D([0], [0], color="0.4", linewidth=2.0, linestyle="--", label="$\pi_0$")
+        )
+
+    n_legend_cols = min(len(legend_handles), 1)
+    fig.tight_layout(rect=[0, 0.35, 1, 1])
     # fig.tight_layout(rect=[0, 0.23, 1, 1])
     # fig.tight_layout(rect=[0, 0.18, 1, 1])
     fig.legend(
@@ -566,7 +580,26 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Use dimension-specific colors (default: 0).",
     )
+    parser.add_argument(
+        "--sft-baselines",
+        nargs="+",
+        default=None,
+        help=(
+            "Optional per-task SFT baseline success-rate values, one per task, in the "
+            "same order as --task-titles. Use an empty string to skip a task."
+        ),
+    )
     return parser
+
+
+def parse_sft_baselines(raw: list[str] | None, n_tasks: int) -> list[float | None]:
+    if raw is None:
+        return [None] * n_tasks
+    if len(raw) != n_tasks:
+        raise ValueError(
+            f"--sft-baselines has {len(raw)} entries but {n_tasks} tasks were provided."
+        )
+    return [float(v) if v.strip() != "" else None for v in raw]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -590,6 +623,12 @@ def main(argv: list[str] | None = None) -> int:
             f"inferred from --identifiers / --runs-per-task.",
             file=sys.stderr,
         )
+        return 1
+
+    try:
+        sft_baselines = parse_sft_baselines(args.sft_baselines, n_tasks)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         return 1
 
     entity = configure_wandb_auth(args.entity)
@@ -628,6 +667,7 @@ def main(argv: list[str] | None = None) -> int:
         errorbar=args.errorbar,
         max_steps=args.max_steps,
         dim_colors=args.dim_colors,
+        sft_baselines=sft_baselines,
     )
     return 0
 
