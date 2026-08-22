@@ -37,6 +37,7 @@ that downstream plotting can compute means/CI bands per checkpoint step
 """
 
 import argparse
+import json
 import pathlib
 import re
 import sys
@@ -57,14 +58,37 @@ from openpi.training import config as openpi_config
 CHECKPOINT_DIR_RE = re.compile(r"^checkpoint(\d+)$")
 
 
-def discover_checkpoints(run_dir: pathlib.Path, steps=None):
-    """Return a list of (step, ckpt_dir) sorted ascending.
+def _infer_use_actor_diff_mean(run_name: str) -> bool:
+    """Decide use_actor_diff_mean from the run directory name.
 
-    Only directories named ``checkpoint<N>`` with a companion
-    ``checkpoint<N>_config.json`` (written by PixelSACLearner.save_checkpoint)
-    are considered restorable.
+    Older checkpoints' saved configs predate the ``use_actor_diff_mean``
+    field, so it must be inferred: runs named like ``..._aractor_diff_mean``
+    use the (mean, log_std) residual head, while diff-actor runs without
+    "mean" in the name (e.g. ``..._diffaractor_...``) use the plain action
+    residual head instead.
     """
-    found = []
+    return "mean" in run_name.lower()
+
+
+def discover_checkpoints(run_dir: pathlib.Path, steps=None):
+    """Return a list of (step, ckpt_dir, config) sorted ascending.
+
+    Only directories named ``checkpoint<N>`` are considered. Each one is
+    paired with hyperparameters read from its own companion
+    ``checkpoint<N>_config.json`` (written by PixelSACLearner.save_checkpoint)
+    if present, or -- since training runs only started saving that file
+    partway through, so typically only the *last* checkpoint of a run has
+    one -- falls back to whichever other companion config exists in
+    ``run_dir``. All checkpoints within one run share the same architecture,
+    so any one config is a valid template for the whole run. Checkpoints in
+    runs with no companion config at all are skipped, since there's nothing
+    to reconstruct hyperparameters from.
+
+    Every resulting config additionally gets ``use_actor_diff_mean`` filled
+    in via ``_infer_use_actor_diff_mean`` if the field is missing (see that
+    function's docstring).
+    """
+    ckpt_dirs = []
     for p in sorted(run_dir.iterdir()):
         if not p.is_dir():
             continue
@@ -74,12 +98,39 @@ def discover_checkpoints(run_dir: pathlib.Path, steps=None):
         step = int(m.group(1))
         if steps is not None and step not in steps:
             continue
+        ckpt_dirs.append((step, p))
+    ckpt_dirs.sort(key=lambda x: x[0])
+
+    configs_by_step = {}
+    for step, p in ckpt_dirs:
         config_path = run_dir / f"{p.name}_config.json"
-        if not config_path.exists():
-            print(f"[warn] skipping {p} (no companion config json)", file=sys.stderr)
+        if config_path.exists():
+            with open(config_path) as f:
+                configs_by_step[step] = json.load(f)
+
+    template_step = max(configs_by_step) if configs_by_step else None
+
+    found = []
+    for step, p in ckpt_dirs:
+        if step in configs_by_step:
+            cfg = dict(configs_by_step[step])
+        elif template_step is not None:
+            print(f"[info] {p} has no companion config json; reusing config "
+                  f"from checkpoint{template_step} (same run, same architecture)",
+                  file=sys.stderr)
+            cfg = dict(configs_by_step[template_step])
+        else:
+            print(f"[warn] skipping {p} (no companion config json found anywhere "
+                  f"in {run_dir})", file=sys.stderr)
             continue
-        found.append((step, p))
-    found.sort(key=lambda x: x[0])
+
+        if "use_actor_diff_mean" not in cfg:
+            inferred = _infer_use_actor_diff_mean(run_dir.name)
+            print(f"[info] {p} config missing use_actor_diff_mean; inferring "
+                  f"{inferred} from run name '{run_dir.name}'", file=sys.stderr)
+            cfg["use_actor_diff_mean"] = inferred
+
+        found.append((step, p, cfg))
     return found
 
 
@@ -109,12 +160,19 @@ def _residual_norm_diff(actions):
 def _residual_norm_diff_mean(mu, log_std):
     """mu, log_std: [B, T, D] accumulated TanhNormal params.
 
+    ``ar_sample_diff_mean`` returns mu/log_std as ``[T, B, D]`` (scan axis
+    first) while ``actions`` is transposed to ``[B, T, D]``.  Reorder here
+    so consecutive-step residuals match the ``use_actor_diff`` path.
+
     Same as _residual_norm_diff, applied independently to the (mean,
     log_std) residual pair. Returns (residual_mean_norm, residual_log_std_norm)
     scalars, each averaged over the chunk and the batch.
     """
     mu = np.asarray(mu)
     log_std = np.asarray(log_std)
+    if mu.ndim == 3:
+        mu = np.transpose(mu, (1, 0, 2))
+        log_std = np.transpose(log_std, (1, 0, 2))
     residual_mean = mu[:, 1:, :] - mu[:, :-1, :]                 # [B, T-1, D]
     residual_log_std = log_std[:, 1:, :] - log_std[:, :-1, :]    # [B, T-1, D]
     mean_norm = float(np.linalg.norm(residual_mean, axis=-1).mean())
@@ -214,7 +272,7 @@ def eval_residual_norms(
     if not checkpoints:
         raise ValueError(f"No restorable checkpoints found under {run_dir}")
     print(f"Found {len(checkpoints)} checkpoints in {run_dir}: "
-          f"{[s for s, _ in checkpoints]}", flush=True)
+          f"{[s for s, _, _ in checkpoints]}", flush=True)
 
     print(f"Loading pi0 policy '{pi0_checkpoint}'...", flush=True)
     agent_dp = _load_pi0_policy(pi0_checkpoint)
@@ -229,9 +287,9 @@ def eval_residual_norms(
     env = create_libero_env(task, 256, seed)
 
     all_rows = []
-    for step, ckpt_dir in checkpoints:
+    for step, ckpt_dir, config in checkpoints:
         print(f"Evaluating checkpoint{step} ({ckpt_dir})...", flush=True)
-        agent = PixelSACLearner.restore_from_checkpoint_dir(str(ckpt_dir))
+        agent = PixelSACLearner.restore_from_checkpoint_dir(str(ckpt_dir), config=config)
         rows = eval_checkpoint(agent, agent_dp, env, variant, num_rollouts, max_timesteps, seed)
         for row in rows:
             row["step"] = step

@@ -616,7 +616,8 @@ class PixelSACLearner(Agent):
             print(f'warm-started critic from {baseline_ckpt_path}')
 
     @classmethod
-    def restore_from_checkpoint_dir(cls, ckpt_dir: str, seed: int = 0, extra_args: Dict[str, Any] = {}) -> 'PixelSACLearner':
+    def restore_from_checkpoint_dir(cls, ckpt_dir: str, seed: int = 0, extra_args: Dict[str, Any] = {},
+                                     config: Optional[Dict[str, Any]] = None) -> 'PixelSACLearner':
         """Reconstruct a PixelSACLearner from a checkpoint directory.
 
         Reads the companion ``checkpoint{step}_config.json`` written by
@@ -628,6 +629,12 @@ class PixelSACLearner(Agent):
                        e.g. ``.../run_name/checkpoint941``
             seed     : RNG seed for the dummy initialisation (weights are
                        overwritten by the restore, so value does not matter)
+            config   : optional pre-loaded hyperparameter dict to use instead
+                       of reading ``checkpoint{step}_config.json`` from disk.
+                       Useful for checkpoints that don't have their own
+                       companion config (e.g. reuse another checkpoint's
+                       config from the same run, since architecture doesn't
+                       change across steps within a run).
 
         Returns:
             Fully restored ``PixelSACLearner`` instance.
@@ -636,17 +643,19 @@ class PixelSACLearner(Agent):
         import numpy as np
 
         ckpt_path = pathlib.Path(ckpt_dir)
-        config_path = ckpt_path.parent / f"{ckpt_path.name}_config.json"
-
         assert ckpt_path.exists(), f"Checkpoint not found: {ckpt_dir}"
-        assert config_path.exists(), (
-            f"Config file not found: {config_path}\n"
-            "Checkpoints saved before this feature was added do not have a "
-            "companion config. Pass hyperparameters explicitly instead."
-        )
 
-        with open(config_path) as f:
-            cfg = json.load(f)
+        if config is not None:
+            cfg = config
+        else:
+            config_path = ckpt_path.parent / f"{ckpt_path.name}_config.json"
+            assert config_path.exists(), (
+                f"Config file not found: {config_path}\n"
+                "Checkpoints saved before this feature was added do not have a "
+                "companion config. Pass hyperparameters explicitly instead."
+            )
+            with open(config_path) as f:
+                cfg = json.load(f)
 
         # Reconstruct dummy numpy arrays with the saved shapes / dtypes.
         def _make(shape, dtype_str):

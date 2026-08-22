@@ -20,7 +20,7 @@ export LD_LIBRARY_PATH=
 export PYTHONPATH="${PYTHONPATH}:/home/hk-project-pai00139/eu3660/dsrl_pi0/dsrl_pi0/"
 export PYTHONPATH=$PYTHONPATH:/home/hk-project-pai00139/eu3660/dsrl_pi0/LIBERO
 
-export OUTPUT_DIR=/pfs/work9/workspace/scratch/ka_eu3660-rlinf_tmp/DSRL_pi0_Libero
+export OUTPUT_DIR=/hkfs/work/workspace/scratch/eu3660-dsrl/DSRL_pi0_Libero/
 
 # --- Eval settings ---
 pi0_checkpoint="pi05_libero"
@@ -32,53 +32,33 @@ force=0   # set to 1 to re-evaluate runs whose output CSV already exists
 
 # --- Task 1: Task 28 ---
 task1_ids=(
-  ""
-  ""
   "dsrl_pi05_libero_90_task28_2026_08_05_09_10_55_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual"
-  ""
   "dsrl_pi05_libero_90_task28_2026_07_29_17_18_42_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual_freeze100k"
-  ""
   "dsrl_pi05_libero_90_task28_2026_08_07_22_46_43_0000--s-0_criticgpt_aractor_diff_mean"
-  ""
 )
 task1_task_id=28
 
 # --- Task 2: Task 43 ---
 task2_ids=(
-  ""
-  ""
   "dsrl_pi05_libero_90_task43_2026_08_05_09_15_05_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual"
-  ""
   "dsrl_pi05_libero_90_task43_2026_07_29_17_18_34_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual_freeze100k"
-  ""
   "dsrl_pi05_libero_90_task43_2026_08_07_22_46_43_0000--s-0_criticgpt_aractor_diff_mean"
-  ""
 )
 task2_task_id=43
 
 # --- Task 3: Task 59 ---
 task3_ids=(
-  ""
-  ""
   "dsrl_pi05_libero_90_task59_2026_07_12_09_53_42_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual"
-  ""
   "dsrl_pi05_libero_90_task59_2026_07_29_17_18_42_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual_freeze100k"
-  ""
   "dsrl_pi05_libero_90_task59_2026_08_08_16_10_19_0000--s-0_criticgpt_aractor_diff_mean"
-  ""
 )
 task3_task_id=59
 
 # --- Task 4: Task 60 ---
 task4_ids=(
-  ""
-  ""
   "dsrl_pi05_libero_90_task60_2026_08_04_16_38_56_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual"
-  ""
   "dsrl_pi05_libero_90_task60_2026_07_29_17_18_38_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual_freeze100k"
-  ""
   "dsrl_pi05_libero_90_task60_2026_08_08_16_11_50_0000--s-0_criticgpt_aractor_diff_mean"
-  ""
 )
 task4_task_id=60
 
