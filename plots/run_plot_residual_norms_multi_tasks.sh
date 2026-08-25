@@ -7,10 +7,10 @@
 # plots/eval_residual_norms.py / plots/run_eval_residual_norms.sh) instead of
 # a metric already logged to W&B.
 #
-# Produces three figures:
-#   - residual_norm_noise.svg  : ||residual|| for use_actor_diff runs
-#   - residual_norm_mean.svg   : ||residual_mean||     for use_actor_diff_mean runs
-#   - residual_norm_logstd.svg : ||residual_log_std||  for use_actor_diff_mean runs
+# Produces two figures:
+#   - residual_norm_mean.svg   : ||Δ action|| (use_actor_diff) and
+#                                ||Δ mean|| (use_actor_diff_mean) on one plot
+#   - residual_norm_logstd.svg : ||Δ log_std|| for use_actor_diff_mean runs
 #
 # Run identifiers below are the same run names used in
 # plots/run_eval_residual_norms.sh; each is resolved to
@@ -87,6 +87,7 @@ method_labels=(
 # latter (see plots/eval_residual_norms.py).
 diff_indices=(2 4)
 diff_mean_indices=(6)
+combined_indices=(2 4 6)
 
 filter_indices() {
   # filter_indices <array_name> <idx> [<idx> ...]
@@ -118,29 +119,52 @@ build_labels() {
   done
 }
 
+build_metric_map() {
+  # build_metric_map <array_name> -> prints "run_id=metric" for each non-empty
+  # entry. use_actor_diff runs (diff_indices) use residual_norm; diff_mean runs
+  # use residual_mean_norm.
+  local -n _src="$1"
+  for i in "${!_src[@]}"; do
+    local run_id="${_src[$i]}"
+    [[ -z "${run_id}" ]] && continue
+    local metric="residual_norm"
+    for k in "${diff_mean_indices[@]}"; do
+      if [[ "$i" == "$k" ]]; then
+        metric="residual_mean_norm"
+        break
+      fi
+    done
+    printf '%s=%s\n' "${run_id}" "${metric}"
+  done
+}
+
 task_var_names=(task1_ids task2_ids task3_ids task4_ids)
 task_titles=("${task1_title}" "${task2_title}" "${task3_title}" "${task4_title}")
 runs_per_task="${#task1_ids[@]}"
 
-all_ids_diff=()
+all_ids_combined=()
 all_ids_diff_mean=()
 all_labels=()
+all_metric_map=()
 for name in "${task_var_names[@]}"; do
-  readarray -t _filtered_diff < <(filter_indices "${name}" "${diff_indices[@]}")
+  readarray -t _filtered_combined < <(filter_indices "${name}" "${combined_indices[@]}")
   readarray -t _filtered_diff_mean < <(filter_indices "${name}" "${diff_mean_indices[@]}")
-  all_ids_diff+=("${_filtered_diff[@]}")
+  all_ids_combined+=("${_filtered_combined[@]}")
   all_ids_diff_mean+=("${_filtered_diff_mean[@]}")
   readarray -t _labels < <(build_labels "${name}")
   all_labels+=("${_labels[@]}")
+  readarray -t _metric_map < <(build_metric_map "${name}")
+  all_metric_map+=("${_metric_map[@]}")
 done
 labels_str=$(IFS=','; echo "${all_labels[*]}")
+metric_map_str=$(IFS=','; echo "${all_metric_map[*]}")
 
 # --- Plot settings ---
 suptitle="\$\pi_{0.5}\$ LIBERO-90"
 show_plot=0
 ema_halflife=0          # checkpoints are sparse; rely on --errorbar for spread instead
 clip_to_shortest_run=0
-max_steps=1000000
+max_steps=800000
 
 export LD_LIBRARY_PATH=
 export PYTHONPATH="${PYTHONPATH}:/home/hk-project-pai00139/eu3660/dsrl_pi0/dsrl_pi0/"
@@ -150,33 +174,16 @@ extra_args=()
 [[ ${show_plot} -eq 1 ]] && extra_args+=(--show)
 [[ ${clip_to_shortest_run} -eq 1 ]] && extra_args+=(--clip-to-shortest-run)
 
-echo "=== Plotting noise-residual norm (use_actor_diff) ==="
+echo "=== Plotting mean-residual norms (use_actor_diff + use_actor_diff_mean) ==="
 python3 plots/plot_residual_norms_multi_tasks.py \
-  --identifiers "${all_ids_diff[@]}" \
+  --identifiers "${all_ids_combined[@]}" \
   --task-titles "${task_titles[@]}" \
   --runs-per-task "${runs_per_task}" \
   --data-dir "${data_dir}" \
   --metric residual_norm \
+  --metric-map "${metric_map_str}" \
   --ymin 0.0 \
-  --ymax 1.0 \
-  --ema-halflife "${ema_halflife}" \
-  --output "plots/plots_multi_tasks/residual_norm_noise.svg" \
-  --labels "${labels_str}" \
-  --suptitle "${suptitle}" \
-  --errorbar ci \
-  --max-steps "${max_steps}" \
-  --residual-colors 1 \
-  "${extra_args[@]}"
-
-echo "=== Plotting mean-residual norm (use_actor_diff_mean) ==="
-python3 plots/plot_residual_norms_multi_tasks.py \
-  --identifiers "${all_ids_diff_mean[@]}" \
-  --task-titles "${task_titles[@]}" \
-  --runs-per-task "${runs_per_task}" \
-  --data-dir "${data_dir}" \
-  --metric residual_mean_norm \
-  --ymin 0.0 \
-  --ymax 0.3 \
+  --ymax 5.0 \
   --ema-halflife "${ema_halflife}" \
   --output "plots/plots_multi_tasks/residual_norm_mean.svg" \
   --labels "${labels_str}" \
@@ -194,7 +201,7 @@ python3 plots/plot_residual_norms_multi_tasks.py \
   --data-dir "${data_dir}" \
   --metric residual_log_std_norm \
   --ymin 0.0 \
-  --ymax 1.0 \
+  --ymax 10.0 \
   --ema-halflife "${ema_halflife}" \
   --output "plots/plots_multi_tasks/residual_norm_logstd.svg" \
   --labels "${labels_str}" \

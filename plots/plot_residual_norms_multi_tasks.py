@@ -33,6 +33,42 @@ from wandb_plots_multi_tasks import (
 
 DEFAULT_METRIC = "residual_norm"
 DEFAULT_DATA_DIR = Path("plots/data/residual_norms")
+VALID_METRICS = ("residual_norm", "residual_mean_norm", "residual_log_std_norm")
+
+
+def parse_metric_mapping(raw: str | None) -> dict[str, str]:
+    if not raw:
+        return {}
+    mapping: dict[str, str] = {}
+    for item in raw.split(","):
+        if "=" not in item:
+            raise ValueError(
+                f"Invalid metric mapping {item!r}. Expected format: run_id=metric,run_id2=metric2"
+            )
+        run_id, metric = item.split("=", 1)
+        run_id = run_id.strip()
+        metric = metric.strip()
+        if metric not in VALID_METRICS:
+            raise ValueError(
+                f"Invalid metric {metric!r} for {run_id!r}. "
+                f"Expected one of: {', '.join(VALID_METRICS)}"
+            )
+        mapping[run_id] = metric
+    return mapping
+
+
+def resolve_metric(
+    identifier: str,
+    csv_stem: str,
+    *,
+    default_metric: str,
+    metric_mapping: dict[str, str],
+) -> str:
+    return (
+        metric_mapping.get(identifier)
+        or metric_mapping.get(csv_stem)
+        or default_metric
+    )
 
 
 def resolve_csv_path(identifier: str, data_dir: Path) -> Path:
@@ -73,13 +109,21 @@ def collect_histories(
     metric: str,
     data_dir: Path,
     label_mapping: dict[str, str],
+    metric_mapping: dict[str, str] | None = None,
 ) -> pd.DataFrame:
+    metric_mapping = metric_mapping or {}
     frames: list[pd.DataFrame] = []
     for identifier in identifiers:
         if identifier == "":
             continue
         csv_path = resolve_csv_path(identifier, data_dir)
-        history = load_residual_history(csv_path, metric)
+        run_metric = resolve_metric(
+            identifier,
+            csv_path.stem,
+            default_metric=metric,
+            metric_mapping=metric_mapping,
+        )
+        history = load_residual_history(csv_path, run_metric)
         label = (
             label_mapping.get(identifier)
             or label_mapping.get(csv_path.stem)
@@ -142,8 +186,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--metric",
         default=DEFAULT_METRIC,
-        choices=["residual_norm", "residual_mean_norm", "residual_log_std_norm"],
-        help=f"Which residual-norm metric to plot (default: {DEFAULT_METRIC}).",
+        choices=list(VALID_METRICS),
+        help=f"Default residual-norm metric when no --metric-map entry applies (default: {DEFAULT_METRIC}).",
+    )
+    parser.add_argument(
+        "--metric-map",
+        default=None,
+        help=(
+            "Optional per-run metric overrides as comma-separated run_id=metric pairs. "
+            "Useful for plotting use_actor_diff (residual_norm) and use_actor_diff_mean "
+            "(residual_mean_norm) runs on the same figure."
+        ),
     )
     parser.add_argument(
         "--labels",
@@ -265,6 +318,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     label_mapping = parse_label_mapping(args.labels)
+    try:
+        metric_mapping = parse_metric_mapping(args.metric_map)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
 
     task_dfs: list[pd.DataFrame] = []
     for t in range(n_tasks):
@@ -276,6 +334,7 @@ def main(argv: list[str] | None = None) -> int:
                 metric=args.metric,
                 data_dir=args.data_dir,
                 label_mapping=label_mapping,
+                metric_mapping=metric_mapping,
             )
         except ValueError as exc:
             print(f"Error (task {t + 1}): {exc}", file=sys.stderr)
