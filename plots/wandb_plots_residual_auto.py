@@ -44,9 +44,14 @@ OKABE_ITO = [
 
 COLOR_MAP = {
     "DSRL-SAC (Baseline)": "#D55E00",
-    "FDTS-Residual-Noise (no freezing)": "#005A50",
-    "FDTS-Residual-Noise (with freezing)": "#00a76a",
-    "FDTS-Residual-Distribution (no freezing)": "#89c200",
+    # "FDTS-Chunk MLP Actor + MLP Critic": "#00bed5",
+    # "FDTS-Residual-Noise (no freezing)": "#005A50",
+    # "FDTS-Residual-Noise (with freezing)": "#00a76a",
+    # "FDTS-Residual-Distribution (no freezing)": "#89c200",
+    "FDTS-Residual-Noise": "#005A50",
+    "FDTS-Residual-Distribution": "#89c200",
+    "FDTS-Residual-Noise (bounded)": "#0090a7",
+    "FDTS-Residual-Distribution (bounded)": "#764a00",
 }
 
 

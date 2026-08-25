@@ -16,56 +16,86 @@ entity="noragorhan-karlsruhe-institute-of-technology"
 seeds_per_method=2
 
 task1_ids=(
-  "dsrl_pi05_libero_90_task29_2026_07_31_08_03_38_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task29_2026_06_14_20_38_00_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task29_2026_08_23_08_05_46_0000--s-0_baseline_10replan"
+  "dsrl_pi05_libero_90_task29_2026_08_22_03_31_18_0000--s-0_baseline" # 10 replan
   "dsrl_pi05_libero_90_task29_2026_08_01_11_15_21_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
   "dsrl_pi05_libero_90_task29_2026_08_02_15_14_37_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
+  "dsrl_pi05_libero_90_task29_2026_08_16_17_41_03_0000--s-0_criticgpt_aractor_diff_7dims_5vec_2reps"
+  ""
+  "dsrl_pi05_libero_90_task29_2026_08_21_23_56_23_0000--s-0_criticgpt_aractor_diff_mean_7dims_5vec2reps"
+  ""
   "dsrl_pi05_libero_90_task29_2026_08_03_19_53_57_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps_residualmlp"
+  ""
+  ""
   ""
 )
 task1_title="Task 29"
+task1_sft="0.50"
 
 
 # --- Task 2 ---
 task2_ids=(
-  "dsrl_pi05_libero_90_task38_2026_07_31_08_02_00_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task38_2026_07_30_08_07_34_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task38_2026_06_28_11_00_03_0000--s-0_baseline_10numqs_10replan"
+  "dsrl_pi05_libero_90_task38_2026_06_28_04_37_47_0000--s-0_baseline_10numqs_10replan"
   "dsrl_pi05_libero_90_task38_2026_08_02_09_30_38_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
+  ""
+  "dsrl_pi05_libero_90_task38_2026_08_16_17_19_53_0000--s-0_criticgpt_aractor_diff_7dims_5vec_2reps"
+  ""
+  "dsrl_pi05_libero_90_task38_2026_08_19_00_37_07_0000--s-0_criticgpt_aractor_diff_mean_7dims_5vec_2reps"
   ""
   "dsrl_pi05_libero_90_task38_2026_08_04_08_04_14_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps_residualmlp"
   ""
+  ""
+  ""
 )
 task2_title="Task 38"
+task2_sft="0.61"
 
 task3_ids=(
-  "dsrl_pi05_libero_90_task59_2026_06_19_16_13_16_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task59_2026_07_07_09_46_10_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task59_2026_08_22_12_55_47_0000--s-0_baseline_7dims_10replan"
+  "dsrl_pi05_libero_90_task59_2026_08_23_08_03_43_0000--s-0_baseline_7dims_10replan"
   "dsrl_pi05_libero_90_task59_2026_08_03_17_16_09_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
+  ""
+  "dsrl_pi05_libero_90_task59_2026_08_23_09_00_36_0000--s-0_criticgpt_aractor_diff_7dims_5vec_2reps"
+  ""
+  "dsrl_pi05_libero_90_task59_2026_08_23_09_00_36_0000--s-0_criticgpt_aractor_diff_mean_7dims_5vec_2reps"
   ""
   "dsrl_pi05_libero_90_task59_2026_08_04_08_10_17_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps_residualmlp"
   ""
+  "dsrl_pi05_libero_90_task59_2026_07_07_09_44_51_0000--s-0_criticgpt_diffaractor_10replan"
+  ""
 )
 task3_title="Task 59"
+task3_sft="0.34"
 
 task4_ids=(
-  "dsrl_pi05_libero_90_task64_2026_07_30_18_02_06_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task64_2026_07_30_08_09_38_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task64_2026_06_28_04_53_13_0000--s-0_baseline_10numqs_10replan"
+  "dsrl_pi05_libero_90_task64_2026_06_28_05_44_43_0000--s-0_baseline_10numqs_10replan"
   "dsrl_pi05_libero_90_task64_2026_08_02_09_34_44_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
+  ""
+  "dsrl_pi05_libero_90_task64_2026_08_19_00_09_20_0000--s-0_criticgpt_aractor_diff_7dims_5vec_2reps"
+  ""
+  "dsrl_pi05_libero_90_task64_2026_08_19_00_37_08_0000--s-0_criticgpt_aractor_diff_mean_7dims_5vec_2reps"
   ""
   "dsrl_pi05_libero_90_task64_2026_08_04_08_02_11_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps_residualmlp"
   ""
+  ""
+  ""
 )
 task4_title="Task 64"
-
+task4_sft="0.42"
 # ---------------------------------------------------------------------------
 # Shared legend labels — runs at position i within a task block belong to
 # method  (i / seeds_per_method)  (integer division).  Seeds of the same
 # method share an identical label so that seaborn averages them together.
 # ---------------------------------------------------------------------------
 method_labels=(
-  "DSRL-SAC"
+  "DSRL-SAC (Baseline)"
   "GT-RDS"
-  "GT-RDS-Residual"
+  "GT-RDS-Residual-Noise"
+  "GT-RDS-Residual-Distribution"
+  "GT-RDS-Residual-Distribution-MLP"
+  "FDTS-Residual-Noise"
 )
 
 all_task_ids=(
@@ -73,6 +103,13 @@ all_task_ids=(
   "${task2_ids[@]}"
   "${task3_ids[@]}"
   "${task4_ids[@]}"
+)
+
+sft_baselines=(
+  "${task1_sft}"
+  "${task2_sft}"
+  "${task3_sft}"
+  "${task4_sft}"
 )
 
 labels=()
@@ -84,6 +121,14 @@ for task_ids_ref in task1_ids task2_ids task3_ids task4_ids; do
   done
 done
 
+# --- Labels to render with a dash-dot line style ---
+# Add/uncomment label names to make those runs point-dashed in the plot.
+dashed_labels=(
+  # "GT-RDS-Residual-Distribution"
+  "GT-RDS-Residual-Distribution-MLP"
+  "FDTS-Residual-Noise"
+)
+
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
@@ -92,7 +137,7 @@ output="plots/plots_multi_tasks/pi05_libero90_7dims_chunk_5vec_gtrds.svg"
 show_plot=0
 ymin=0.0
 ymax=1.0
-ema_halflife=25000
+ema_halflife=40000
 clip_to_shortest_run=0
 
 export LD_LIBRARY_PATH=
@@ -102,6 +147,7 @@ export PYTHONPATH=$PYTHONPATH:/home/hk-project-pai00139/eu3660/dsrl_pi0/LIBERO
 extra_args=()
 [[ ${show_plot} -eq 1 ]] && extra_args+=(--show)
 [[ ${clip_to_shortest_run} -eq 1 ]] && extra_args+=(--clip-to-shortest-run)
+[[ ${#dashed_labels[@]} -gt 0 ]] && extra_args+=(--dashed-labels "${dashed_labels[@]}")
 
 labels_str=$(IFS=','; echo "${labels[*]}")
 
@@ -122,4 +168,5 @@ python3 plots/wandb_plots_multi_tasks.py \
   --errorbar ci \
   --max-steps 1000000 \
   --dim-colors 1 \
+  --sft-baselines "${sft_baselines[@]}" \
   "${extra_args[@]}"

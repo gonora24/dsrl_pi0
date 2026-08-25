@@ -62,13 +62,31 @@ RESIDUAL_COLORS = [
     "#89c200",
 ]
 
+# DIM_COLORS = [
+#     "#D55E00",  # Baseline
+#     "#5e00d5",  # 7dims
+#     "#d50077",  # 7dims chunked
+#     "#005889",  # 7dims chunked 5vecs
+#     "#e691a6",  # 7dims chunked 5vecs residual aractor 
+#     "#00d599",  # 7dims chunked 5vecs residualmlp
+# ]
+
 DIM_COLORS = [
-    "#D55E00",  # Baseline
-    "#5e00d5",  # 7dims
-    "#d50077",  # 7dims chunked
-    "#005889",  # 7dims chunked 5vecs
-    "#e691a6",  # 7dims chunked 5vecs residual aractor 
-    "#00d599",  # 7dims chunked 5vecs residualmlp
+    # "#D55E00",
+    "#5e00d5",  # rds
+    "#d50077",  # t-rds
+    "#005889",  # gt-rds
+    "#00bed5",  # fdts chunk mlps
+    # "#e691a6",  # t-rds residual noise 
+    # "#560030",  # t-rds residual mean
+    "#0035f1",  # gt-rds residual noise
+    "#00bfd7",  # gt-rds residual distribution
+    "#00a274",  # gt-rds residual mlp
+    "#005A50",  # fdts residual noise
+    # "#d91a1a", # t-rds residual noise bounded
+    # "#a34800", # t-rds residual mean bounded
+    "#008a12", # gt-rds residual noise bounded
+    "#7bbe00", # gt-rds residual distribution bounded
 ]
 
 
@@ -303,6 +321,7 @@ def plot_multi_task(
     dim_colors: int = 0,
     residual_colors: int = 0,
     sft_baselines: list[float | None] | None = None,
+    dashed_labels: list[str] | None = None,
 ) -> None:
     setup_plot_style()
 
@@ -387,9 +406,12 @@ def plot_multi_task(
         # Assign z-order/clipping to the method lines before adding the SFT
         # baseline line, so the loop below doesn't clobber its explicit z-order.
         n_lines = len(ax.lines)
+        _dashed = set(dashed_labels) if dashed_labels else set()
         for i, line in enumerate(ax.lines):
             line.set_zorder(3 + n_lines - i)
             line.set_clip_on(False)
+            if i < len(task_hue_order) and task_hue_order[i] in _dashed:
+                line.set_linestyle((0, (4, 1, 1, 1)))
 
         sft_value = sft_baselines[idx] if sft_baselines is not None else None
         if sft_value is not None:
@@ -431,8 +453,15 @@ def plot_multi_task(
     # Shared legend below the 2x2 grid using proxy artists so it is independent
     # of any individual axes legend state.
     from matplotlib.lines import Line2D
+    _dashed_set = set(dashed_labels) if dashed_labels else set()
     legend_handles = [
-        Line2D([0], [0], color=palette[lbl], linewidth=2.5, label=lbl)
+        Line2D(
+            [0], [0],
+            color=palette[lbl],
+            linewidth=2.5,
+            linestyle=(0, (4, 1, 1, 1)) if lbl in _dashed_set else "solid",
+            label=lbl,
+        )
         for lbl in all_labels
     ]
 
@@ -622,6 +651,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Use residual-specific colors (default: 0).",
     )
+    parser.add_argument(
+        "--dashed-labels",
+        nargs="*",
+        default=[],
+        help=(
+            "Labels to render with a dash-dot line style. "
+            "Pass one or more label names, e.g. --dashed-labels 'Label A' 'Label B'."
+        ),
+    )
     return parser
 
 
@@ -703,6 +741,7 @@ def main(argv: list[str] | None = None) -> int:
         dim_colors=args.dim_colors,
         residual_colors=args.residual_colors,
         sft_baselines=sft_baselines,
+        dashed_labels=args.dashed_labels,
     )
     return 0
 

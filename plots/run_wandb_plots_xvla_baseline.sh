@@ -19,30 +19,32 @@ task1_ids=(
   "dsrl_xvla_libero_90_task26_2026_08_13_14_45_06_0000--s-0_baseline"
 )
 task1_title="Task 26"
-
+task1_sft="0.89"
 # --- Task 1 ---
 task2_ids=(
   "dsrl_xvla_libero_90_task32_2026_07_25_11_03_49_0000--s-0_baseline"
 )
 task2_title="Task 32"
-
+task2_sft="0.85"
 
 # --- Task 2 ---
 task3_ids=(
   "dsrl_xvla_libero_90_task59_2026_07_25_09_59_30_0000--s-0_baseline"
 )
 task3_title="Task 59"
+task3_sft="0.99"
 
 task4_ids=(
   "dsrl_xvla_libero_90_task73_2026_07_26_17_09_23_0000--s-0_baseline"
 )
 task4_title="Task 73"
+task4_sft="0.81"
 
 task5_ids=(
   "dsrl_xvla_libero_90_task75_2026_08_13_16_29_25_0000--s-0_baseline"
 )
 task5_title="Task 75"
-
+task5_sft="0.64"
 
 # ---------------------------------------------------------------------------
 # Shared legend labels — runs at position i within a task block belong to
@@ -61,6 +63,13 @@ all_task_ids=(
   "${task5_ids[@]}"
 )
 
+sft_baselines=(
+  "${task1_sft}"
+  "${task2_sft}"
+  "${task3_sft}"
+  "${task4_sft}"
+  "${task5_sft}"
+)
 labels=()
 for task_ids_ref in task1_ids task2_ids task3_ids task4_ids task5_ids; do
   declare -n _ids="$task_ids_ref"
@@ -108,4 +117,5 @@ python3 plots/wandb_plots_multi_tasks.py \
   --errorbar ci \
   --max-steps 800000 \
   --dim-colors 1 \
+  --sft-baselines "${sft_baselines[@]}" \
   "${extra_args[@]}"

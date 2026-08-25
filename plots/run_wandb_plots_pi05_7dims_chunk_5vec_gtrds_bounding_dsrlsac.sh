@@ -16,46 +16,71 @@ entity="noragorhan-karlsruhe-institute-of-technology"
 seeds_per_method=2
 
 task1_ids=(
-  "dsrl_pi05_libero_90_task29_2026_07_31_08_03_38_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task29_2026_08_23_08_05_46_0000--s-0_baseline_10replan"
   "dsrl_pi05_libero_90_task29_2026_08_22_03_31_18_0000--s-0_baseline" # 10 replan
-  "dsrl_pi05_libero_90_task29_2026_07_31_08_04_03_0000--s-0_baseline_7dims"
-  "dsrl_pi05_libero_90_task29_2026_08_22_12_40_31_0000--s-0_baseline_7dims_10replan"
-  "dsrl_pi05_libero_90_task29_2026_07_31_08_06_09_0000--s-0_chunkrewardcriticactor_mlp_7dims"
-  "dsrl_pi05_libero_90_task29_2026_08_13_07_44_58_0000--s-0_chunkrewardcriticactor_mlp_7dims"
+  "dsrl_pi05_libero_90_task29_2026_08_01_11_15_21_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
+  "dsrl_pi05_libero_90_task29_2026_08_02_15_14_37_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
+  "dsrl_pi05_libero_90_task29_2026_08_16_17_41_03_0000--s-0_criticgpt_aractor_diff_7dims_5vec_2reps"
+  ""
+  "dsrl_pi05_libero_90_task29_2026_08_21_23_56_23_0000--s-0_criticgpt_aractor_diff_mean_7dims_5vec2reps"
+  ""
+  "dsrl_pi05_libero_90_task29_2026_08_21_04_24_00_0000--s-0_criticgpt_aractor_diff_7dims_5vec_2reps_0.1bound"
+  ""
+  "dsrl_pi05_libero_90_task29_2026_08_20_13_29_55_0000--s-0_criticgpt_aractor_diff_mean_7dims_5vec2reps_0.1bound"
+  ""
 )
 task1_title="Task 29"
 task1_sft="0.50"
+
 
 # --- Task 2 ---
 task2_ids=(
   "dsrl_pi05_libero_90_task38_2026_06_28_11_00_03_0000--s-0_baseline_10numqs_10replan"
   "dsrl_pi05_libero_90_task38_2026_06_28_04_37_47_0000--s-0_baseline_10numqs_10replan"
-  "dsrl_pi05_libero_90_task38_2026_08_22_12_51_08_0000--s-0_baseline_7dims_10replan"
-  "dsrl_pi05_libero_90_task38_2026_07_31_08_02_05_0000--s-0_baseline_7dims"
-  "dsrl_pi05_libero_90_task38_2026_07_30_17_24_53_0000--s-0_chunkrewardcriticactor_mlp_7dims"
-  "dsrl_pi05_libero_90_task38_2026_08_13_07_44_58_0000--s-0_chunkrewardcriticactor_mlp_7dims"
+  "dsrl_pi05_libero_90_task38_2026_08_02_09_30_38_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
+  ""
+  "dsrl_pi05_libero_90_task38_2026_08_16_17_19_53_0000--s-0_criticgpt_aractor_diff_7dims_5vec_2reps"
+  ""
+  "dsrl_pi05_libero_90_task38_2026_08_19_00_37_07_0000--s-0_criticgpt_aractor_diff_mean_7dims_5vec_2reps"
+  ""
+  "dsrl_pi05_libero_90_task38_2026_08_20_14_53_41_0000--s-0_criticgpt_aractor_diff_7dims_5vec_2reps_0.1bound"
+  ""
+  "dsrl_pi05_libero_90_task38_2026_08_21_04_24_00_0000--s-0_criticgpt_aractor_diff_mean_7dims_5vec2reps_0.1bound"
+  ""
 )
 task2_title="Task 38"
 task2_sft="0.61"
 
 task3_ids=(
-  "dsrl_pi05_libero_90_task43_2026_06_28_05_42_04_0000--s-0_baseline_10numqs_10replan"
-  "dsrl_pi05_libero_90_task43_2026_06_28_11_00_03_0000--s-0_baseline_10numqs_10replan"
-  "dsrl_pi05_libero_90_task43_2026_07_30_07_40_22_0000--s-0_baseline_only7dims"
-  "dsrl_pi05_libero_90_task43_2026_08_12_13_15_56_0000--s-0_baseline_7dims"
-  "dsrl_pi05_libero_90_task43_2026_07_30_10_12_54_0000--s-0_chunkrewardcriticactor_mlp_7dims"
-  "dsrl_pi05_libero_90_task43_2026_08_13_07_44_58_0000--s-0_chunkrewardcriticactor_mlp_7dims"
+  "dsrl_pi05_libero_90_task59_2026_08_22_03_01_52_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task59_2026_07_29_17_18_42_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task59_2026_08_03_17_16_09_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
+  ""
+  "dsrl_pi05_libero_90_task59_2026_08_23_09_00_36_0000--s-0_criticgpt_aractor_diff_7dims_5vec_2reps"
+  ""
+  "dsrl_pi05_libero_90_task59_2026_08_23_09_00_36_0000--s-0_criticgpt_aractor_diff_mean_7dims_5vec_2reps"
+  ""
+  "dsrl_pi05_libero_90_task59_2026_08_20_14_53_41_0000--s-0_criticgpt_aractor_diff_7dims_5vec_2reps_0.1bound"
+  ""
+  "dsrl_pi05_libero_90_task59_2026_08_24_03_15_03_0000--s-0_criticgpt_aractor_diff_mean_7dims_5vec_2reps_bounded0.2"
+  ""
 )
-task3_title="Task 43"
-task3_sft="0.14"
+task3_title="Task 59"
+task3_sft="0.34"
 
 task4_ids=(
   "dsrl_pi05_libero_90_task64_2026_06_28_04_53_13_0000--s-0_baseline_10numqs_10replan"
   "dsrl_pi05_libero_90_task64_2026_06_28_05_44_43_0000--s-0_baseline_10numqs_10replan"
-  "dsrl_pi05_libero_90_task64_2026_08_22_13_14_27_0000--s-0_baseline_7dims_10replan"
-  "dsrl_pi05_libero_90_task64_2026_07_31_07_59_42_0000--s-0_baseline_7dims"
-  "dsrl_pi05_libero_90_task64_2026_07_30_15_25_17_0000--s-0_chunkrewardcriticactor_mlp_7dims"
-  "dsrl_pi05_libero_90_task64_2026_07_30_17_25_51_0000--s-0_chunkrewardcriticactor_mlp_7dims"
+  "dsrl_pi05_libero_90_task64_2026_08_02_09_34_44_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
+  ""
+  "dsrl_pi05_libero_90_task64_2026_08_19_00_09_20_0000--s-0_criticgpt_aractor_diff_7dims_5vec_2reps"
+  ""
+  "dsrl_pi05_libero_90_task64_2026_08_19_00_37_08_0000--s-0_criticgpt_aractor_diff_mean_7dims_5vec_2reps"
+  ""
+  "dsrl_pi05_libero_90_task64_2026_08_22_00_25_00_0000--s-0_criticgpt_aractor_diff_7dims_5vec2reps_0.1bound"
+  ""
+  "dsrl_pi05_libero_90_task64_2026_08_20_13_25_02_0000--s-0_criticgpt_aractor_diff_mean_7dims_5vec2reps_0.1bound"
+  ""
 )
 task4_title="Task 64"
 task4_sft="0.42"
@@ -66,8 +91,11 @@ task4_sft="0.42"
 # ---------------------------------------------------------------------------
 method_labels=(
   "DSRL-SAC (Baseline)"
-  "RDS"
-  "T-RDS"
+  "GT-RDS"
+  "GT-RDS-Residual-Noise"
+  "GT-RDS-Residual-Distribution"
+  "GT-RDS-Residual-Noise (bounded)"
+  "GT-RDS-Residual-Distribution (bounded)"
 )
 
 all_task_ids=(
@@ -76,11 +104,17 @@ all_task_ids=(
   "${task3_ids[@]}"
   "${task4_ids[@]}"
 )
+
 sft_baselines=(
   "${task1_sft}"
   "${task2_sft}"
   "${task3_sft}"
   "${task4_sft}"
+)
+
+dashed_labels=(
+  "GT-RDS-Residual-Noise (bounded)"
+  "GT-RDS-Residual-Distribution (bounded)"
 )
 
 labels=()
@@ -96,11 +130,11 @@ done
 metric="evaluation/success_rate"
 x_axis="_step"
 suptitle="\$\pi_{0.5}\$ LIBERO-90"
-output="plots/plots_multi_tasks/pi05_libero90_7dims_chunk_correct_names_10replan.svg"
+output="plots/plots_multi_tasks/pi05_libero90_7dims_chunk_5vec_gtrds_bounded_dsrlsac.svg"
 show_plot=0
 ymin=0.0
 ymax=1.0
-ema_halflife=25000
+ema_halflife=50000
 clip_to_shortest_run=0
 
 export LD_LIBRARY_PATH=
@@ -131,4 +165,5 @@ python3 plots/wandb_plots_multi_tasks.py \
   --max-steps 1000000 \
   --dim-colors 1 \
   --sft-baselines "${sft_baselines[@]}" \
+  --dashed-labels "${dashed_labels[@]}" \
   "${extra_args[@]}"

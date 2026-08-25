@@ -16,31 +16,26 @@ entity="noragorhan-karlsruhe-institute-of-technology"
 seeds_per_method=2
 
 task1_ids=(
-  # "dsrl_pi05_libero_90_task29_2026_08_23_08_05_46_0000--s-0_baseline_10replan"
-  # "dsrl_pi05_libero_90_task29_2026_08_22_03_31_18_0000--s-0_baseline" # 10 replan
+  "dsrl_pi05_libero_90_task29_2026_08_23_08_05_46_0000--s-0_baseline_10replan"
+  "dsrl_pi05_libero_90_task29_2026_08_22_03_31_18_0000--s-0_baseline" # 10 replan
   "dsrl_pi05_libero_90_task29_2026_08_22_12_40_31_0000--s-0_baseline_7dims_10replan"
   "dsrl_pi05_libero_90_task29_2026_08_23_08_05_04_0000--s-0_baseline_7dims_10replan"
   "dsrl_pi05_libero_90_task29_2026_07_31_08_06_09_0000--s-0_chunkrewardcriticactor_mlp_7dims"
   "dsrl_pi05_libero_90_task29_2026_08_13_07_44_58_0000--s-0_chunkrewardcriticactor_mlp_7dims"
-  "dsrl_pi05_libero_90_task29_2026_08_01_11_15_21_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
-  "dsrl_pi05_libero_90_task29_2026_08_02_15_14_37_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
   "dsrl_pi05_libero_90_task29_2026_06_21_10_25_52_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
   "dsrl_pi05_libero_90_task29_2026_06_21_10_16_01_0000--s-0_chunkrewardcriticactor_mlp_10numqs_5replan_criticdim512_256_128"
 )
 task1_title="Task 29"
 task1_sft="0.50"
 
-
 # --- Task 2 ---
 task2_ids=(
-  # "dsrl_pi05_libero_90_task38_2026_06_28_11_00_03_0000--s-0_baseline_10numqs_10replan"
-  # "dsrl_pi05_libero_90_task38_2026_06_28_04_37_47_0000--s-0_baseline_10numqs_10replan"
+  "dsrl_pi05_libero_90_task38_2026_06_28_11_00_03_0000--s-0_baseline_10numqs_10replan"
+  "dsrl_pi05_libero_90_task38_2026_06_28_04_37_47_0000--s-0_baseline_10numqs_10replan"
   "dsrl_pi05_libero_90_task38_2026_08_22_12_51_08_0000--s-0_baseline_7dims_10replan"
   "dsrl_pi05_libero_90_task38_2026_08_23_07_36_43_0000--s-0_baseline_7dims_10replan"
   "dsrl_pi05_libero_90_task38_2026_07_30_17_24_53_0000--s-0_chunkrewardcriticactor_mlp_7dims"
   "dsrl_pi05_libero_90_task38_2026_08_13_07_44_58_0000--s-0_chunkrewardcriticactor_mlp_7dims"
-  "dsrl_pi05_libero_90_task38_2026_08_02_09_30_38_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
-  ""
   "dsrl_pi05_libero_90_task38_2026_06_29_03_07_24_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
   "dsrl_pi05_libero_90_task38_2026_06_29_00_36_11_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
 )
@@ -48,41 +43,25 @@ task2_title="Task 38"
 task2_sft="0.61"
 
 task3_ids=(
-  # "dsrl_pi05_libero_90_task43_2026_06_28_05_42_04_0000--s-0_baseline_10numqs_10replan"
-  # "dsrl_pi05_libero_90_task43_2026_06_28_11_00_03_0000--s-0_baseline_10numqs_10replan"
+  "dsrl_pi05_libero_90_task43_2026_06_28_05_42_04_0000--s-0_baseline_10numqs_10replan"
+  "dsrl_pi05_libero_90_task43_2026_06_28_11_00_03_0000--s-0_baseline_10numqs_10replan"
   "dsrl_pi05_libero_90_task43_2026_08_23_07_33_46_0000--s-0_baseline_7dims_10replan"
   "dsrl_pi05_libero_90_task43_2026_08_23_07_33_50_0000--s-0_baseline_7dims_10replan"
   "dsrl_pi05_libero_90_task43_2026_07_30_10_12_54_0000--s-0_chunkrewardcriticactor_mlp_7dims"
   "dsrl_pi05_libero_90_task43_2026_08_13_07_44_58_0000--s-0_chunkrewardcriticactor_mlp_7dims"
-  "dsrl_pi05_libero_90_task43_2026_08_15_18_02_24_0000--s-0_chunkrewardcriticactor_mlp_5vecs_2reps"
-  ""
   "dsrl_pi05_libero_90_task43_2026_06_29_03_52_19_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
   "dsrl_pi05_libero_90_task43_2026_06_28_11_05_20_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
 )
 task3_title="Task 43"
 task3_sft="0.14"
-# task3_ids=(
-#   "dsrl_pi05_libero_90_task59_2026_08_22_03_01_52_0000--s-0_baseline" #10 replan
-#   "dsrl_pi05_libero_90_task59_2026_07_07_09_46_10_0000--s-0_baseline"
-#   "dsrl_pi05_libero_90_task59_2026_08_22_12_55_47_0000--s-0_baseline_7dims_10replan"
-#   "dsrl_pi05_libero_90_task59_2026_08_12_13_07_58_0000--s-0_baseline_7dims"
-#   "dsrl_pi05_libero_90_task59_2026_07_30_10_06_45_0000--s-0_chunkrewardcriticactor_mlp_7dims"
-#   ""
-#   "dsrl_pi05_libero_90_task59_2026_08_03_17_16_09_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
-#   ""
-# )
-# task3_title="Task 59"
-# task3_sft="0.34"
 
 task4_ids=(
-  # "dsrl_pi05_libero_90_task64_2026_06_28_04_53_13_0000--s-0_baseline_10numqs_10replan"
-  # "dsrl_pi05_libero_90_task64_2026_06_28_05_44_43_0000--s-0_baseline_10numqs_10replan"
+  "dsrl_pi05_libero_90_task64_2026_06_28_04_53_13_0000--s-0_baseline_10numqs_10replan"
+  "dsrl_pi05_libero_90_task64_2026_06_28_05_44_43_0000--s-0_baseline_10numqs_10replan"
   "dsrl_pi05_libero_90_task64_2026_08_22_13_14_27_0000--s-0_baseline_7dims_10replan"
   "dsrl_pi05_libero_90_task64_2026_08_23_07_33_50_0000--s-0_baseline_7dims_10replan"
   "dsrl_pi05_libero_90_task64_2026_07_30_15_25_17_0000--s-0_chunkrewardcriticactor_mlp_7dims"
   "dsrl_pi05_libero_90_task64_2026_07_30_17_25_51_0000--s-0_chunkrewardcriticactor_mlp_7dims"
-  "dsrl_pi05_libero_90_task64_2026_08_02_09_34_44_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps"
-  ""
   "dsrl_pi05_libero_90_task64_2026_06_29_01_20_38_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
   "dsrl_pi05_libero_90_task64_2026_06_28_11_05_17_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
 )
@@ -94,10 +73,9 @@ task4_sft="0.42"
 # method share an identical label so that seaborn averages them together.
 # ---------------------------------------------------------------------------
 method_labels=(
-  # "DSRL-SAC (Baseline)"
+  "DSRL-SAC (Baseline)"
   "RDS"
   "T-RDS"
-  "GT-RDS"
   "FDTS-Chunk MLP Actor + MLP Critic"
 )
 
@@ -131,7 +109,7 @@ done
 metric="evaluation/success_rate"
 x_axis="_step"
 suptitle="\$\pi_{0.5}\$ LIBERO-90"
-output="plots/plots_multi_tasks/pi05_libero90_7dims_chunk_gt_trds_nodsrlsac.svg"
+output="plots/plots_multi_tasks/pi05_libero90_7dims_chunk_correct_names_10replan_fdts.svg"
 show_plot=0
 ymin=0.0
 ymax=1.0

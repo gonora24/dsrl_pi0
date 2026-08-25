@@ -22,6 +22,7 @@ task1_ids=(
   ""
 )
 task1_title="Task 33"
+task1_sft="0.38"
 
 # --- Task 1 ---
 task2_ids=(
@@ -31,6 +32,7 @@ task2_ids=(
   ""
 )
 task2_title="Task 38"
+task2_sft="0.27"
 
 
 
