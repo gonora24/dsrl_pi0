@@ -16,25 +16,27 @@ entity="noragorhan-karlsruhe-institute-of-technology"
 seeds_per_method=2
 
 task1_ids=(
-  "dsrl_pi05_libero_90_task28_2026_06_21_04_44_15_0000--s-0_baseline_10numqs_5replan"
-  "dsrl_pi05_libero_90_task28_2026_06_18_07_59_34_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task28_2026_07_06_17_08_06_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task28_2026_08_22_04_00_17_0000--s-0_baseline"
   "dsrl_pi05_libero_90_task28_2026_06_21_10_16_01_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
   "dsrl_pi05_libero_90_task28_2026_06_20_01_12_06_0000--s-0_chunkrewardcriticactor_mlp_10replan_criticdim512_256_128"
   "dsrl_pi05_libero_90_task28_chunk_2026_08_10_17_29_23_0000--s-0_chunkrewardcriticactor_mlp_realactionchunking"
   "dsrl_pi05_libero_90_task28_chunk_2026_07_31_16_36_41_0000--s-0_chunkrewardcriticactor_mlp_realactionchunking"
 )
 task1_title="Task 28"
+task1_sft="0.49"
 
 # --- Task 1 ---
 task2_ids=(
-  "dsrl_pi05_libero_90_task59_2026_07_29_17_18_42_0000--s-0_baseline"
-  "dsrl_pi05_libero_90_task59_2026_07_07_09_46_10_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task59_2026_08_22_03_01_52_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task59_2026_08_24_11_41_34_0000--s-0_baseline_10replan"
   "dsrl_pi05_libero_90_task59_2026_07_07_09_46_10_0000--s-0_chunkrewardcriticactor_mlp_10replan_criticdim512_256_128"
   "dsrl_pi05_libero_90_task59_2026_07_08_08_19_37_0000--s-0_chunkreward_singleactorcritic_mlp_10replan_criticdim512_256_128"
   "dsrl_pi05_libero_90_task59_2026_07_30_16_48_55_0000--s-0_chunkrewardcriticactor_mlp_realactionchunking"
   "dsrl_pi05_libero_90_task59_2026_07_17_13_32_50_0000--s-0_chunkrewardcriticactor_mlp_realactionchunking"
 )
 task2_title="Task 59"
+task2_sft="0.34"
 
 
 
@@ -54,6 +56,10 @@ all_task_ids=(
   "${task2_ids[@]}"
 )
 
+sft_baselines=(
+  "${task1_sft}"
+  "${task2_sft}"
+)
 labels=()
 for task_ids_ref in task1_ids task2_ids; do
   declare -n _ids="$task_ids_ref"
@@ -101,4 +107,5 @@ python3 plots/wandb_plots_two_tasks.py \
   --errorbar ci \
   --max-steps 1000000 \
   --dim-colors 0 \
+  --sft-baselines "${sft_baselines[@]}" \
   "${extra_args[@]}"

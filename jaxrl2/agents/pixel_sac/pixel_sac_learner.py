@@ -477,6 +477,9 @@ class PixelSACLearner(Agent):
             'transformer_use_bias': transformer_use_bias,
             'transformer_weight_norm': transformer_weight_norm,
             'use_actor_diff_mean': use_actor_diff_mean,
+            'num_noise_vectors': num_noise_vectors,
+            'noise_repeats_per_vector': noise_repeats_per_vector,
+            'only_predict_dims_until': only_predict_dims_until,
         }
         
 
@@ -695,6 +698,9 @@ class PixelSACLearner(Agent):
             marginalize_logprobs=cfg['marginalize_logprobs'],
             use_actor_diff=cfg['use_actor_diff'],
             use_actor_diff_mean=cfg['use_actor_diff_mean'],
+            num_noise_vectors=cfg.get('num_noise_vectors', 1),
+            noise_repeats_per_vector=cfg.get('noise_repeats_per_vector', 1),
+            only_predict_dims_until=cfg.get('only_predict_dims_until', -1),
             num_qs=cfg['num_qs'],
             critic_hidden_dims=tuple(cfg['critic_hidden_dims']),
             use_transformer_critic=cfg['use_transformer_critic'],

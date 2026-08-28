@@ -31,6 +31,11 @@ DEFAULT_X_AXIS = "_step"
 DEFAULT_EMA_HALFLIFE = 50_000
 DEFAULT_RUNS_PER_TASK = 4
 
+SUBPLOT_W = 7.0   # inches per subplot column
+SUBPLOT_H = 5.0   # inches per subplot row
+LEGEND_H   = 1.2   # inches reserved at the top for the shared legend
+LEGEND_GAP = 0.4   # extra inches between legend and subplots
+
 OKABE_ITO = [
     "#0072B2",  # blue
     "#D55E00",  # vermillion
@@ -45,9 +50,15 @@ OKABE_ITO = [
 METHOD_COLORS = [
     "#D55E00",  # Baseline
     "#00bed5",  # Method 2
-    # "#d50053", # only for ablation overlapping
+    "#d50053", # only for ablation overlapping
     "#0041d6",  # Method 3
     "#003756",  # Method 4  005889
+]
+
+RESIDUAL_COLORS = [
+    "#005A50",
+    "#00a76a",
+    "#89c200",
 ]
 
 DIM_COLORS = [
@@ -218,19 +229,26 @@ def fetch_run_history(
     try:
         run = api.run(run_path)
     except wandb.errors.CommError as exc:
-        raise ValueError(f"Could not find run {identifier!r} in {project!r}.") from exc
+        try:
+            entity = "noras-masterarbeit"
+            project = "DSRL_pi05_Libero"
+            run_path = f"{entity}/{project}/{identifier}" if entity else f"{project}/{identifier}"
+            run = api.run(run_path)
+        except wandb.errors.CommError as exc:
+            raise ValueError(f"Could not find run {identifier!r} in {project!r}.") from exc
+    metric2 = "evaluation/Reward >= 1"
     if metric not in run.summary:
-        metric2 = "evaluation/Reward >= 1"
         columns = [x_axis, metric2]
     else:
         columns = [x_axis, metric]
     history = run.history(keys=columns, pandas=True)
     if history.empty:
         raise ValueError(f"Run {identifier!r} has no logged values for {metric!r}.")
-    history = history.dropna(subset=[metric])
+    actual_metric = metric if metric in history.columns else metric2
+    history = history.dropna(subset=[actual_metric])
     if history.empty:
         raise ValueError(f"Run {identifier!r} only contains NaN values for {metric!r}.")
-    history = history.rename(columns={metric: "success_rate", x_axis: "step"})
+    history = history.rename(columns={actual_metric: "success_rate", x_axis: "step"})
     history["identifier"] = identifier
     history["run_name"] = run.name or identifier
     return history
@@ -301,7 +319,9 @@ def plot_multi_task(
     errorbar: str = "ci",
     max_steps: float | None = None,
     dim_colors: int = 0,
+    residual_colors: int = 0,
     sft_baselines: list[float | None] | None = None,
+    dashed_labels: list[str] | None = None,
 ) -> None:
     setup_plot_style()
 
@@ -324,6 +344,9 @@ def plot_multi_task(
     if dim_colors == 1:
         print("Using dimension-specific colors")
         task_palette = {lbl: DIM_COLORS[i] for i, lbl in enumerate(all_labels)}
+    elif residual_colors == 1:
+        print("Using residual-specific colors")
+        task_palette = {lbl: RESIDUAL_COLORS[i] for i, lbl in enumerate(all_labels)}
     else:
         print("Using method-specific colors")
         task_palette = {lbl: METHOD_COLORS[i] for i, lbl in enumerate(all_labels)}
@@ -345,7 +368,11 @@ def plot_multi_task(
     y_top = ymax_val + top_pad
 
     n_tasks = len(processed)
-    fig, axes = plt.subplots(1, n_tasks, figsize=(7 * n_tasks, 7), sharey=True)
+    top_margin = LEGEND_H + LEGEND_GAP
+    fig_w = n_tasks * SUBPLOT_W
+    fig_h = SUBPLOT_H + top_margin
+    top_frac = top_margin / fig_h
+    fig, axes = plt.subplots(1, n_tasks, figsize=(fig_w, fig_h), sharey=True)
     axes = np.atleast_1d(axes)
 
     for idx, (df, title) in enumerate(zip(processed, task_titles)):
@@ -372,9 +399,12 @@ def plot_multi_task(
         # Assign z-order/clipping to the method lines before adding the SFT
         # baseline line, so the loop below doesn't clobber its explicit z-order.
         n_lines = len(ax.lines)
+        _dashed = set(dashed_labels) if dashed_labels else set()
         for i, line in enumerate(ax.lines):
             line.set_zorder(3 + n_lines - i)
             line.set_clip_on(False)
+            if i < len(task_hue_order) and task_hue_order[i] in _dashed:
+                line.set_linestyle((0, (4, 1, 1, 1)))
 
         sft_value = sft_baselines[idx] if sft_baselines is not None else None
         if sft_value is not None:
@@ -392,7 +422,7 @@ def plot_multi_task(
         ax.set_ylim(y_bottom, y_top)
 
         ax.set_title(title, pad=6)
-        ax.set_xlabel("Training Steps")
+        ax.set_xlabel("Gradient Steps")
         # Only left column gets the y-axis label
         ax.set_ylabel(metric_ylabel(metric) if idx % 2 == 0 else "")
 
@@ -405,11 +435,18 @@ def plot_multi_task(
     if suptitle:
         fig.suptitle(suptitle, y=1.01)
 
-    # Shared legend below the 2x2 grid using proxy artists so it is independent
+    # Shared legend above the grid using proxy artists so it is independent
     # of any individual axes legend state.
     from matplotlib.lines import Line2D
+    _dashed_set = set(dashed_labels) if dashed_labels else set()
     legend_handles = [
-        Line2D([0], [0], color=palette[lbl], linewidth=2.5, label=lbl)
+        Line2D(
+            [0], [0],
+            color=palette[lbl],
+            linewidth=2.5,
+            linestyle=(0, (4, 1, 1, 1)) if lbl in _dashed_set else "solid",
+            label=lbl,
+        )
         for lbl in all_labels
     ]
 
@@ -420,13 +457,11 @@ def plot_multi_task(
         )
 
     n_legend_cols = min(len(legend_handles), 1)
-    fig.tight_layout(rect=[0, 0.35, 1, 1])
-    # fig.tight_layout(rect=[0, 0.23, 1, 1])
-    # fig.tight_layout(rect=[0, 0.18, 1, 1])
+    fig.tight_layout(rect=[0, 0, 1, 1 - top_frac])
     fig.legend(
         handles=legend_handles,
-        loc="lower center",
-        bbox_to_anchor=(0.5, 0.02),
+        loc="upper center",
+        bbox_to_anchor=(0.5, 1 - LEGEND_GAP / fig_h),
         ncol=n_legend_cols,
         frameon=True,
         fancybox=False,
@@ -589,6 +624,21 @@ def build_parser() -> argparse.ArgumentParser:
             "same order as --task-titles. Use an empty string to skip a task."
         ),
     )
+    parser.add_argument(
+        "--residual-colors",
+        type=int,
+        default=0,
+        help="Use residual-specific colors (default: 0).",
+    )
+    parser.add_argument(
+        "--dashed-labels",
+        nargs="*",
+        default=[],
+        help=(
+            "Labels to render with a dash-dot line style. "
+            "Pass one or more label names, e.g. --dashed-labels 'Label A' 'Label B'."
+        ),
+    )
     return parser
 
 
@@ -667,7 +717,9 @@ def main(argv: list[str] | None = None) -> int:
         errorbar=args.errorbar,
         max_steps=args.max_steps,
         dim_colors=args.dim_colors,
+        residual_colors=args.residual_colors,
         sft_baselines=sft_baselines,
+        dashed_labels=args.dashed_labels,
     )
     return 0
 

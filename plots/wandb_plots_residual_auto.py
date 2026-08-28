@@ -31,6 +31,11 @@ DEFAULT_X_AXIS = "_step"
 DEFAULT_EMA_HALFLIFE = 25_000
 DEFAULT_RUNS_PER_TASK = 4
 
+SUBPLOT_W = 7.0   # inches per subplot column
+SUBPLOT_H = 5.0   # inches per subplot row
+LEGEND_H   = 1.2   # inches reserved at the top for the shared legend
+LEGEND_GAP = 0.4   # extra inches between legend and subplots
+
 OKABE_ITO = [
     "#0072B2",  # blue
     "#D55E00",  # vermillion
@@ -337,7 +342,11 @@ def plot_multi_task(
     y_bottom = ymin_val - bottom_pad
     y_top = ymax_val + top_pad
 
-    fig, axes = plt.subplots(2, 2, figsize=(14, 10), sharey=True)
+    top_margin = LEGEND_H + LEGEND_GAP
+    fig_w = 2 * SUBPLOT_W
+    fig_h = 2 * SUBPLOT_H + top_margin
+    top_frac = top_margin / fig_h
+    fig, axes = plt.subplots(2, 2, figsize=(fig_w, fig_h), sharey=True)
     axes_flat = axes.flatten()
 
     for idx, (df, title) in enumerate(zip(processed, task_titles)):
@@ -384,7 +393,7 @@ def plot_multi_task(
         ax.set_ylim(y_bottom, y_top)
 
         ax.set_title(title, pad=6)
-        ax.set_xlabel("Training Steps")
+        ax.set_xlabel("Gradient Steps")
         # Only left column gets the y-axis label
         ax.set_ylabel(metric_ylabel(metric) if idx % 2 == 0 else "")
 
@@ -397,7 +406,7 @@ def plot_multi_task(
     if suptitle:
         fig.suptitle(suptitle, y=1.01)
 
-    # Shared legend below the 2x2 grid using proxy artists so it is independent
+    # Shared legend above the grid using proxy artists so it is independent
     # of any individual axes legend state.
     from matplotlib.lines import Line2D
     legend_handles = [
@@ -412,12 +421,12 @@ def plot_multi_task(
         )
 
     n_legend_cols = min(len(legend_handles), 2)
-    fig.tight_layout(rect=[0, 0.19, 1, 1])
+    fig.tight_layout(rect=[0, 0, 1, 1 - top_frac])
 
     fig.legend(
         handles=legend_handles,
-        loc="lower center",
-        bbox_to_anchor=(0.5, 0.02),
+        loc="upper center",
+        bbox_to_anchor=(0.5, 1 - LEGEND_GAP / fig_h),
         ncol=n_legend_cols,
         frameon=True,
         fancybox=False,

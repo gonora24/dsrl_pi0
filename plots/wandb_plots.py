@@ -30,6 +30,11 @@ DEFAULT_METRIC = "evaluation/success_rate"
 DEFAULT_X_AXIS = "_step"
 DEFAULT_EMA_HALFLIFE = 50_000
 
+SUBPLOT_W = 7.0   # inches per subplot column
+SUBPLOT_H = 5.0   # inches per subplot row
+LEGEND_H   = 1.2   # inches reserved at the top for the shared legend
+LEGEND_GAP = 0.4   # extra inches between legend and subplots
+
 # Publication-quality styling
 OKABE_ITO = [
     "#0072B2",  # blue
@@ -57,20 +62,17 @@ def setup_plot_style():
 
     plt.rcParams.update({
         "font.family": "DejaVu Sans",
-
-        "axes.titlesize": 20,
-        "axes.labelsize": 11,
+        "figure.titlesize": 30,
+        "axes.titlesize": 15,
+        "axes.labelsize": 13,
         "xtick.labelsize": 10,
         "ytick.labelsize": 10,
-        "legend.fontsize": 13,
-
+        "legend.fontsize": 20,
         "lines.linewidth": 2.5,
         "axes.linewidth": 1.2,
-
         "savefig.dpi": 300,
         "pdf.fonttype": 42,
         "ps.fonttype": 42,
-
         "mathtext.fontset": "cm",
     })
 
@@ -299,7 +301,10 @@ def plot_success_rates(
     setup_plot_style()
     n_runs = df["label"].nunique()
     hue_order = df["label"].drop_duplicates().tolist()
-    fig, ax = plt.subplots(figsize=(7, 5))
+    top_margin = LEGEND_H + LEGEND_GAP
+    fig_h = SUBPLOT_H + top_margin
+    top_frac = top_margin / fig_h
+    fig, ax = plt.subplots(figsize=(SUBPLOT_W, fig_h))
 
     sns.lineplot(
         data=df,
@@ -310,6 +315,7 @@ def plot_success_rates(
         palette=COLOR_MAP,
         linewidth=2.5,
         ax=ax,
+        legend=False,
     )
     # linewidth was 1.8
 
@@ -318,11 +324,9 @@ def plot_success_rates(
     ax.set_xticks(nice_step_ticks(max_step))
     ax.xaxis.set_major_formatter(FuncFormatter(format_training_steps))
 
-    ax.set_xlabel("Training Steps")
+    ax.set_xlabel("Gradient Steps")
     ax.set_ylabel(metric_ylabel(metric))
-    text =ax.set_title(title or "Evaluation success rate", pad=15)
-    print(text.get_fontproperties().get_size())
-    print(text.get_fontproperties().get_name())
+    ax.set_title(title or "Evaluation success rate", pad=15)
     ax.tick_params(
         direction="out",
         width=1.2,
@@ -348,29 +352,28 @@ def plot_success_rates(
         # First series on top so overlapping curves stay visible.
         line.set_zorder(3 + n_lines - i)
         line.set_clip_on(False)
-    # ax.legend(
-    #     loc="upper center",
-    #     bbox_to_anchor=(0.5, -0.22),
-    #     ncol=min(n_runs, 2),
-    #     frameon=True,
-    #     handlelength=2.2,
-    #     handletextpad=0.6,
-    #     columnspacing=1.0,
-    # )
-    ax.legend(
+
+    from matplotlib.lines import Line2D
+    legend_handles = [
+        Line2D([0], [0], color=COLOR_MAP.get(lbl, OKABE_ITO[i % len(OKABE_ITO)]),
+               linewidth=2.5, label=lbl)
+        for i, lbl in enumerate(hue_order)
+    ]
+    fig.tight_layout(rect=[0, 0, 1, 1 - top_frac])
+    fig.legend(
+        handles=legend_handles,
         loc="upper center",
-        bbox_to_anchor=(0.5, -0.22),
+        bbox_to_anchor=(0.5, 1 - LEGEND_GAP / fig_h),
         ncol=min(n_runs, 1),
         frameon=True,
-        fancybox=False,      # square corners
-        framealpha=1.0,      # opaque
-        edgecolor="0.6",     # light gray border
-        facecolor="white",   # white background
+        fancybox=False,
+        framealpha=1.0,
+        edgecolor="0.6",
+        facecolor="white",
         handlelength=2.2,
         handletextpad=0.6,
         columnspacing=1.0,
     )
-    fig.subplots_adjust(bottom=0.28 if n_runs <= 3 else 0.34)
 
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)

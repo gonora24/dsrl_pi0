@@ -31,6 +31,11 @@ DEFAULT_X_AXIS = "_step"
 DEFAULT_EMA_HALFLIFE = 50_000
 DEFAULT_RUNS_PER_TASK = 4
 
+SUBPLOT_W = 7.0   # inches per subplot column
+SUBPLOT_H = 4.5   # inches per subplot row
+LEGEND_H   = 1.3   # inches reserved at the top for the shared legend
+LEGEND_GAP = 0.5   # extra inches between legend and subplots
+
 OKABE_ITO = [
     "#0072B2",  # blue
     "#D55E00",  # vermillion
@@ -73,16 +78,16 @@ RESIDUAL_COLORS = [
 
 DIM_COLORS = [
     # "#D55E00",
-    "#5e00d5",  # rds
-    "#d50077",  # t-rds
-    "#005889",  # gt-rds
-    "#00bed5",  # fdts chunk mlps
+    # "#5e00d5",  # rds
+    # "#d50077",  # t-rds
+    # "#005889",  # gt-rds
+    # "#00bed5",  # fdts chunk mlps
     # "#e691a6",  # t-rds residual noise 
     # "#560030",  # t-rds residual mean
     "#0035f1",  # gt-rds residual noise
     "#00bfd7",  # gt-rds residual distribution
-    "#00a274",  # gt-rds residual mlp
-    "#005A50",  # fdts residual noise
+    # "#00a274",  # gt-rds residual mlp
+    # "#005A50",  # fdts residual noise
     # "#d91a1a", # t-rds residual noise bounded
     # "#a34800", # t-rds residual mean bounded
     "#008a12", # gt-rds residual noise bounded
@@ -373,17 +378,22 @@ def plot_multi_task(
     else:
         y_bottom = ymin_val
         y_top = ymax_val
-    if len(task_titles) == 4:
-        fig, axes = plt.subplots(2, 2, figsize=(14, 10), sharey=True)
-    elif len(task_titles) == 6:
-        fig, axes = plt.subplots(3, 2, figsize=(14, 14), sharey=True)
-    elif len(task_titles) == 5:
-        fig, axes = plt.subplots(3, 2, figsize=(14, 14), sharey=True)
+    if len(task_titles) == 1:
+        n_cols, n_rows = 1, 1
+    elif len(task_titles) == 2:
+        n_cols, n_rows = 2, 1
     else:
-        raise ValueError(f"Unsupported number of tasks: {len(task_titles)}")
+        n_cols = 2
+        n_rows = math.ceil(len(task_titles) / n_cols)
+    top_margin = LEGEND_H + LEGEND_GAP
+    fig_w = n_cols * SUBPLOT_W
+    fig_h = n_rows * SUBPLOT_H + top_margin
+    top_frac = top_margin / fig_h
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(fig_w, fig_h), sharey=True)
+    axes = np.atleast_2d(axes).reshape(n_rows, n_cols)
 
     for idx, (df, title) in enumerate(zip(processed, task_titles)):
-        ax = axes[idx // axes.shape[1]][idx % axes.shape[1]]
+        ax = axes[idx // n_cols][idx % n_cols]
 
         # Only use labels that actually appear in this task's data
         task_labels = df["label"].drop_duplicates().tolist()
@@ -429,7 +439,7 @@ def plot_multi_task(
         ax.set_ylim(y_bottom, y_top)
 
         ax.set_title(title, pad=6)
-        ax.set_xlabel("Training Steps")
+        ax.set_xlabel("Gradient Steps")
         # Only left column gets the y-axis label
         ax.set_ylabel(metric_ylabel(metric) if idx % 2 == 0 else "")
         if metric == "training/residual_mean_mean":
@@ -450,7 +460,7 @@ def plot_multi_task(
     if suptitle:
         fig.suptitle(suptitle, y=1.01)
 
-    # Shared legend below the 2x2 grid using proxy artists so it is independent
+    # Shared legend above the grid using proxy artists so it is independent
     # of any individual axes legend state.
     from matplotlib.lines import Line2D
     _dashed_set = set(dashed_labels) if dashed_labels else set()
@@ -472,19 +482,14 @@ def plot_multi_task(
         )
 
     n_legend_cols = min(len(legend_handles), 2)
-    if len(task_titles) in (5, 6):
-        fig.tight_layout(rect=[0, 0.10, 1, 1])
-    elif len(legend_handles) > 4:
-        fig.tight_layout(rect=[0, 0.20, 1, 1])
-    else:
-        fig.tight_layout(rect=[0, 0.15, 1, 1])
+    fig.tight_layout(rect=[0, 0, 1, 1 - top_frac])
 
     fig.legend(
         handles=legend_handles,
-        loc="lower center",
-        bbox_to_anchor=(0.5, 0.02),
+        loc="upper center",
+        bbox_to_anchor=(0.5, 1 - LEGEND_GAP / fig_h),
         ncol=n_legend_cols,
-        frameon=True,
+        frameon=False,
         fancybox=False,
         framealpha=1.0,
         edgecolor="0.6",

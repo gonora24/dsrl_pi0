@@ -43,6 +43,7 @@ import re
 import sys
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 
@@ -56,6 +57,28 @@ from openpi.policies import policy_config
 from openpi.training import config as openpi_config
 
 CHECKPOINT_DIR_RE = re.compile(r"^checkpoint(\d+)$")
+
+
+def _infer_noise_params(run_name: str):
+    """Extract num_noise_vectors, noise_repeats_per_vector, only_predict_dims_until
+    from a run folder name.
+
+    Recognised patterns (all optional, parsed independently):
+      * ``(\d+)dims``          → only_predict_dims_until  (default -1)
+      * ``(\d+)vec``           → num_noise_vectors         (default 1)
+      * ``(\d+)reps?``         → noise_repeats_per_vector  (default 1)
+
+    Examples:
+      ``criticgpt_aractor_diff_7dims_5vec_2reps`` → (7, 5, 2)
+      ``criticgpt_aractor_diff_7dims_5vec2reps``  → (7, 5, 2)
+    """
+    m_dims = re.search(r'(\d+)dims', run_name)
+    m_vec  = re.search(r'(\d+)vec',  run_name)
+    m_reps = re.search(r'(\d+)reps?', run_name)
+    only_predict_dims_until   = int(m_dims.group(1)) if m_dims else -1
+    num_noise_vectors         = int(m_vec.group(1))  if m_vec  else 1
+    noise_repeats_per_vector  = int(m_reps.group(1)) if m_reps else 1
+    return only_predict_dims_until, num_noise_vectors, noise_repeats_per_vector
 
 
 def _infer_use_actor_diff_mean(run_name: str) -> bool:
@@ -130,6 +153,17 @@ def discover_checkpoints(run_dir: pathlib.Path, steps=None):
                   f"{inferred} from run name '{run_dir.name}'", file=sys.stderr)
             cfg["use_actor_diff_mean"] = inferred
 
+        inferred_dims, inferred_nvec, inferred_reps = _infer_noise_params(run_dir.name)
+        for field, inferred_val, label in [
+            ('num_noise_vectors',       inferred_nvec,  'num_noise_vectors'),
+            ('noise_repeats_per_vector', inferred_reps, 'noise_repeats_per_vector'),
+            ('only_predict_dims_until',  inferred_dims,  'only_predict_dims_until'),
+        ]:
+            if field not in cfg:
+                print(f"[info] {p} config missing {label}; inferring "
+                      f"{inferred_val} from run name '{run_dir.name}'", file=sys.stderr)
+                cfg[field] = inferred_val
+
         found.append((step, p, cfg))
     return found
 
@@ -157,6 +191,33 @@ def _residual_norm_diff(actions):
     return float(norms.mean())
 
 
+def _residual_abs_mean_diff(actions):
+    """actions: [B, T, D] cumulative actions from sample_and_log_prob_diff.
+
+    Same as _residual_norm_diff but returns the mean of absolute values of the
+    residual instead of the L2 norm, averaged over the chunk and the batch.
+    """
+    actions = np.asarray(actions)
+    residual = actions[:, 1:, :] - actions[:, :-1, :]   # [B, T-1, D]
+    return float(np.abs(residual).mean())
+
+
+def _residual_abs_mean_diff_mean(mu, log_std):
+    """mu, log_std: [B, T, D] accumulated TanhNormal params.
+
+    Same as _residual_norm_diff_mean but returns mean of absolute values
+    instead of L2 norms. Returns (mean_abs_mean, log_std_abs_mean) scalars.
+    """
+    mu = np.asarray(mu)
+    log_std = np.asarray(log_std)
+    if mu.ndim == 3:
+        mu = np.transpose(mu, (1, 0, 2))
+        log_std = np.transpose(log_std, (1, 0, 2))
+    residual_mean    = mu[:, 1:, :] - mu[:, :-1, :]
+    residual_log_std = log_std[:, 1:, :] - log_std[:, :-1, :]
+    return float(np.abs(residual_mean).mean()), float(np.abs(residual_log_std).mean())
+
+
 def _residual_norm_diff_mean(mu, log_std):
     """mu, log_std: [B, T, D] accumulated TanhNormal params.
 
@@ -180,7 +241,7 @@ def _residual_norm_diff_mean(mu, log_std):
     return mean_norm, log_std_norm
 
 
-def eval_checkpoint(agent, agent_dp, env, variant, num_rollouts, max_timesteps, seed):
+def eval_checkpoint(agent, agent_dp, env, variant, num_rollouts, max_timesteps, seed, abs_mean=False):
     """Run on-policy rollouts through one restored checkpoint.
 
     Returns a list of row-dicts with keys: metric, value, rollout, query_idx.
@@ -219,26 +280,70 @@ def eval_checkpoint(agent, agent_dp, env, variant, num_rollouts, max_timesteps, 
 
                 if agent.use_actor_diff:
                     actions, _ = dist.sample_and_log_prob_diff(seed=key)
-                    norm = _residual_norm_diff(actions)
+                    if abs_mean:
+                        val = _residual_abs_mean_diff(actions)
+                        metric = "residual_abs_mean"
+                    else:
+                        val = _residual_norm_diff(actions)
+                        metric = "residual_norm"
                     rows.append({
-                        "metric": "residual_norm", "value": norm,
+                        "metric": metric, "value": val,
                         "rollout": r, "query_idx": t,
                     })
                     action_chunk = actions
                 else:  # agent.use_actor_diff_mean
                     actions, _, mu, log_std = dist.sample_and_log_prob_diff_mean(seed=key)
-                    mean_norm, log_std_norm = _residual_norm_diff_mean(mu, log_std)
+                    if abs_mean:
+                        mean_val, log_std_val = _residual_abs_mean_diff_mean(mu, log_std)
+                        mean_metric    = "residual_mean_abs_mean"
+                        log_std_metric = "residual_log_std_abs_mean"
+                    else:
+                        mean_val, log_std_val = _residual_norm_diff_mean(mu, log_std)
+                        mean_metric    = "residual_mean_norm"
+                        log_std_metric = "residual_log_std_norm"
                     rows.append({
-                        "metric": "residual_mean_norm", "value": mean_norm,
+                        "metric": mean_metric, "value": mean_val,
                         "rollout": r, "query_idx": t,
                     })
                     rows.append({
-                        "metric": "residual_log_std_norm", "value": log_std_norm,
+                        "metric": log_std_metric, "value": log_std_val,
                         "rollout": r, "query_idx": t,
                     })
                     action_chunk = actions
 
-                noise_pi0 = _prepare_pi0_noise(np.asarray(action_chunk), agent, agent_dp.action_horizon)
+                # Match train_utils_sim / eval_noise_7dims: only_predict_dims_until
+                # embeds the actor's D-dim vectors into a full (1, H, 32) noise
+                # tensor. _prepare_pi0_noise alone cannot do that (and crashes
+                # when the actor already returns a 3D [B, N, D] chunk).
+                action_chunk = np.asarray(action_chunk)
+                if action_chunk.ndim == 1:
+                    action_chunk = action_chunk.reshape(agent.action_chunk_shape)
+                if action_chunk.ndim == 2:
+                    action_chunk = action_chunk[None]  # (1, N, D)
+
+                if agent.only_predict_dims_until > 0:
+                    rng, noise_key = jax.random.split(rng)
+                    H = agent_dp.action_horizon
+                    D_full = agent_dp.action_dim
+                    d = agent.only_predict_dims_until
+                    noise_pi0 = jax.random.normal(noise_key, (1, H, D_full))
+                    if agent.num_noise_vectors > 1:
+                        repeats = getattr(agent, "noise_repeats_per_vector", 1)
+                        pred = jnp.repeat(action_chunk, repeats=repeats, axis=1)
+                        if pred.shape[1] < H:
+                            pad = jnp.repeat(
+                                pred[:, -1:, :], H - pred.shape[1], axis=1
+                            )
+                            pred = jnp.concatenate([pred, pad], axis=1)
+                        elif pred.shape[1] > H:
+                            pred = pred[:, :H, :]
+                        noise_pi0 = noise_pi0.at[0, :, :d].set(pred[0])
+                    else:
+                        noise_pi0 = noise_pi0.at[0, :, :d].set(action_chunk[0])
+                else:
+                    noise_pi0 = _prepare_pi0_noise(
+                        action_chunk, agent, agent_dp.action_horizon
+                    )
                 actions_pi0 = agent_dp.infer(obs_pi_zero, noise=noise_pi0)["actions"]
 
             action_t = actions_pi0[t % query_frequency]
@@ -259,11 +364,13 @@ def eval_residual_norms(
     seed=0,
     steps=None,
     output=None,
+    abs_mean=False,
 ):
     run_dir = pathlib.Path(run_dir)
     run_name = run_dir.name
     if output is None:
-        output = pathlib.Path("plots/data/residual_norms") / f"{run_name}.csv"
+        subfolder = "residual_abs_means" if abs_mean else "residual_norms"
+        output = pathlib.Path("plots/data") / subfolder / f"{run_name}.csv"
     else:
         output = pathlib.Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -290,7 +397,7 @@ def eval_residual_norms(
     for step, ckpt_dir, config in checkpoints:
         print(f"Evaluating checkpoint{step} ({ckpt_dir})...", flush=True)
         agent = PixelSACLearner.restore_from_checkpoint_dir(str(ckpt_dir), config=config)
-        rows = eval_checkpoint(agent, agent_dp, env, variant, num_rollouts, max_timesteps, seed)
+        rows = eval_checkpoint(agent, agent_dp, env, variant, num_rollouts, max_timesteps, seed, abs_mean=abs_mean)
         for row in rows:
             row["step"] = step
         all_rows.extend(rows)
@@ -319,7 +426,10 @@ if __name__ == "__main__":
     parser.add_argument("--steps", type=int, nargs="+", default=None,
                         help="Optional subset of checkpoint steps to evaluate (default: all found).")
     parser.add_argument("--output", type=str, default=None,
-                        help="Output CSV path (default: plots/data/residual_norms/<run_name>.csv).")
+                        help="Output CSV path (default: plots/data/residual_norms/<run_name>.csv, "
+                             "or plots/data/residual_abs_means/<run_name>.csv when --abs_mean is set).")
+    parser.add_argument("--abs_mean", action="store_true", default=False,
+                        help="Compute mean of absolute residuals instead of L2 norms.")
     args = parser.parse_args()
 
     eval_residual_norms(
@@ -332,4 +442,5 @@ if __name__ == "__main__":
         seed=args.seed,
         steps=args.steps,
         output=args.output,
+        abs_mean=args.abs_mean,
     )
