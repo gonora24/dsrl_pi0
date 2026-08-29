@@ -18,12 +18,7 @@ import seaborn as sns
 import wandb
 from matplotlib.ticker import FuncFormatter
 
-from matplotlib import font_manager
-
-font_dir = Path(os.environ["CONDA_PREFIX"]) / "fonts"
-
-for font in font_manager.findSystemFonts(fontpaths=[str(font_dir)]):
-    font_manager.fontManager.addfont(font)
+from plot_fonts import PLOT_FONT_FAMILY
 
 DEFAULT_PROJECT = "DSRL_pi0_Libero"
 DEFAULT_METRIC = "evaluation/success_rate"
@@ -33,8 +28,19 @@ DEFAULT_RUNS_PER_TASK = 4
 
 SUBPLOT_W = 7.0   # inches per subplot column
 SUBPLOT_H = 5.0   # inches per subplot row
-LEGEND_H   = 1.2   # inches reserved at the top for the shared legend
-LEGEND_GAP = 0.4   # extra inches between legend and subplots
+LEGEND_ROW_H = 0.38       # inches per legend row at legend.fontsize=20
+LEGEND_PAD = 0.12         # padding within the legend strip
+LEGEND_GAP = 0.3          # fixed gap between legend and subplots (inches)
+
+
+def legend_top_margin(n_labels: int, ncol: int) -> tuple[float, float]:
+    """Return (legend_h, legend_gap) in inches for a top figure legend."""
+    if n_labels <= 0:
+        n_labels = 1
+    ncol = max(1, ncol)
+    n_legend_rows = math.ceil(n_labels / ncol)
+    legend_h = LEGEND_PAD + LEGEND_ROW_H * n_legend_rows
+    return legend_h, LEGEND_GAP
 
 OKABE_ITO = [
     "#0072B2",  # blue
@@ -79,7 +85,7 @@ def setup_plot_style():
         context="paper",
     )
     plt.rcParams.update({
-        "font.family": "DejaVu Sans",
+        "font.family": PLOT_FONT_FAMILY,
         "figure.titlesize": 30,
         "axes.titlesize": 15,
         "axes.labelsize": 13,
@@ -368,7 +374,12 @@ def plot_multi_task(
     y_top = ymax_val + top_pad
 
     n_tasks = len(processed)
-    top_margin = LEGEND_H + LEGEND_GAP
+    n_legend_labels = len(all_labels)
+    if sft_baselines is not None and any(v is not None for v in sft_baselines):
+        n_legend_labels += 1
+    n_legend_cols = min(n_legend_labels, 1)
+    legend_h, legend_gap = legend_top_margin(n_legend_labels, n_legend_cols)
+    top_margin = legend_h + legend_gap
     fig_w = n_tasks * SUBPLOT_W
     fig_h = SUBPLOT_H + top_margin
     top_frac = top_margin / fig_h
@@ -461,7 +472,7 @@ def plot_multi_task(
     fig.legend(
         handles=legend_handles,
         loc="upper center",
-        bbox_to_anchor=(0.5, 1 - LEGEND_GAP / fig_h),
+        bbox_to_anchor=(0.5, 1 - legend_gap / fig_h),
         ncol=n_legend_cols,
         frameon=True,
         fancybox=False,
