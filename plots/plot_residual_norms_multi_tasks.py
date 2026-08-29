@@ -33,7 +33,14 @@ from wandb_plots_multi_tasks import (
 
 DEFAULT_METRIC = "residual_norm"
 DEFAULT_DATA_DIR = Path("plots/data/residual_norms")
-VALID_METRICS = ("residual_norm", "residual_mean_norm", "residual_log_std_norm")
+VALID_METRICS = (
+    "residual_norm",
+    "residual_mean_norm",
+    "residual_log_std_norm",
+    "residual_abs_mean",
+    "residual_mean_abs_mean",
+    "residual_log_std_abs_mean",
+)
 
 
 def parse_metric_mapping(raw: str | None) -> dict[str, str]:
