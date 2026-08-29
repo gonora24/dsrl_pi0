@@ -17,7 +17,7 @@
 # plots/data/residual_norms/<run_name>.csv.
 # ---------------------------------------------------------------------------
 
-data_dir="plots/data/residual_norms"
+data_dir="plots/data/residual_abs_means"
 
 task1_ids=(
   "dsrl_pi05_libero_90_task29_2026_08_16_17_41_03_0000--s-0_criticgpt_aractor_diff_7dims_5vec_2reps"
@@ -136,10 +136,10 @@ build_metric_map() {
   for i in "${!_src[@]}"; do
     local run_id="${_src[$i]}"
     [[ -z "${run_id}" ]] && continue
-    local metric="residual_norm"
+    local metric="residual_abs_mean"
     for k in "${diff_mean_indices[@]}"; do
       if [[ "$i" == "$k" ]]; then
-        metric="residual_mean_norm"
+        metric="residual_mean_abs_mean"
         break
       fi
     done
@@ -169,11 +169,11 @@ labels_str=$(IFS=','; echo "${all_labels[*]}")
 metric_map_str=$(IFS=','; echo "${all_metric_map[*]}")
 
 # --- Plot settings ---
-suptitle="\$\pi_{0.5}\$ LIBERO-90"
+suptitle="GT-RDS Residual Means on \$\pi_{0.5}\$ LIBERO-90"
 show_plot=0
 ema_halflife=0
 clip_to_shortest_run=0
-max_steps=800000
+max_steps=1000000
 
 export LD_LIBRARY_PATH=
 export PYTHONPATH="${PYTHONPATH}:/home/hk-project-pai00139/eu3660/dsrl_pi0/dsrl_pi0/"
@@ -189,12 +189,12 @@ python3 plots/plot_residual_norms_multi_tasks.py \
   --task-titles "${task_titles[@]}" \
   --runs-per-task "${runs_per_task}" \
   --data-dir "${data_dir}" \
-  --metric residual_norm \
+  --metric residual_abs_mean \
   --metric-map "${metric_map_str}" \
   --ymin 0.0 \
-  --ymax 2.0 \
+  --ymax 0.7 \
   --ema-halflife "${ema_halflife}" \
-  --output "plots/plots_multi_tasks/residual_norm_mean_gtrds.svg" \
+  --output "plots/plots_multi_tasks/residual_mean_gtrds.svg" \
   --labels "${labels_str}" \
   --suptitle "${suptitle}" \
   --errorbar none \
@@ -208,11 +208,11 @@ python3 plots/plot_residual_norms_multi_tasks.py \
   --task-titles "${task_titles[@]}" \
   --runs-per-task "${runs_per_task}" \
   --data-dir "${data_dir}" \
-  --metric residual_log_std_norm \
+  --metric residual_log_std_abs_mean \
   --ymin 0.0 \
-  --ymax 8.0 \
+  --ymax 3.0 \
   --ema-halflife "${ema_halflife}" \
-  --output "plots/plots_multi_tasks/residual_norm_logstd_gtrds.svg" \
+  --output "plots/plots_multi_tasks/residual_logstd_mean_gtrds.svg" \
   --labels "${labels_str}" \
   --suptitle "${suptitle}" \
   --errorbar none \

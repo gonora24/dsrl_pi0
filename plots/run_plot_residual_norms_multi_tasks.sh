@@ -160,7 +160,7 @@ labels_str=$(IFS=','; echo "${all_labels[*]}")
 metric_map_str=$(IFS=','; echo "${all_metric_map[*]}")
 
 # --- Plot settings ---
-suptitle="\$\pi_{0.5}\$ LIBERO-90"
+suptitle="FDTS-Residual Means on\$\pi_{0.5}\$ LIBERO-90"
 show_plot=0
 ema_halflife=0          # checkpoints are sparse; rely on --errorbar for spread instead
 clip_to_shortest_run=0

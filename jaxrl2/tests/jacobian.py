@@ -161,6 +161,8 @@ def plot_jacobian_block(
     cmap="coolwarm",
     num_actions=None,
     average_over_chunk=False,
+    vmin=None,
+    vmax=None,
 ):
     """Heatmap of a signed (A, D) Jacobian block.
 
@@ -186,6 +188,10 @@ def plot_jacobian_block(
         average_over_chunk : if True, use an auto-title reflecting that
                       J_block was averaged over the whole action/noise chunk
                       instead of citing action_idx/noise_idx
+        vmin        : fixed heatmap color lower limit; omit with vmax for
+                      symmetric auto-scale from data
+        vmax        : fixed heatmap color upper limit; omit with vmin for
+                      symmetric auto-scale from data
 
     Returns:
         fig, ax
@@ -214,11 +220,15 @@ def plot_jacobian_block(
     else:
         fig = ax.get_figure()
 
-    vabs = float(max(abs(J_block.min()), abs(J_block.max())))
-    # vabs = float(max(abs(J_block.min()), abs(J_block.max())))
-    # vabs_min=float(min(J_block.min(), J_block.max()))
-    # if vabs == 0.0:
-    #     vabs = 1.0  # avoid degenerate colour scale for zero matrices
+    if vmin is None and vmax is None:
+        vabs = float(max(abs(J_block.min()), abs(J_block.max())))
+        if vabs == 0.0:
+            vabs = 1.0  # avoid degenerate colour scale for zero matrices
+        vmin, vmax = -vabs, vabs
+    elif vmin is None or vmax is None:
+        raise ValueError("Pass both vmin and vmax, or neither for auto-scale")
+
+    scale_ref = max(abs(vmin), abs(vmax))
 
     im = ax.imshow(
         J_block,
@@ -226,8 +236,8 @@ def plot_jacobian_block(
         cmap=cmap,
         origin="upper",
         interpolation="nearest",
-        vmin=-vabs,
-        vmax=vabs,
+        vmin=vmin,
+        vmax=vmax,
     )
 
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
@@ -244,7 +254,7 @@ def plot_jacobian_block(
         for i in range(A):
             for j in range(D):
                 v = float(J_block[i, j])
-                color = "white" if abs(v) > 0.6 * vabs else "black"
+                color = "white" if abs(v) > 0.6 * scale_ref else "black"
                 ax.text(
                     j, i, f"{v:.2f}",
                     ha="center", va="center",
@@ -328,6 +338,8 @@ def _save_jacobian_outputs(
     plot=True,
     title_str=None,
     task_id=None,
+    vmin=None,
+    vmax=None,
 ):
     """Save the raw array, metrics JSON, and (optionally) plots for one Jacobian block.
 
@@ -350,6 +362,8 @@ def _save_jacobian_outputs(
                          influence metric
         plot          : if True, save the heatmap (and influence bar chart)
         title_str     : title string for the heatmap plot
+        vmin          : fixed heatmap color lower limit (requires vmax)
+        vmax          : fixed heatmap color upper limit (requires vmin)
 
     Returns:
         influence : (D,) array, or None if compute_influence_metric=False
@@ -395,6 +409,8 @@ def _save_jacobian_outputs(
             title=title_str,
             num_actions=num_actions,
             average_over_chunk=average_over_chunk,
+            vmin=vmin,
+            vmax=vmax,
         )
         fig_path = out_dir / f"{stem}.svg"
         fig.savefig(fig_path)
@@ -442,6 +458,8 @@ def jacobian_test(
     plot=True,
     gripper_close_mode=False,
     gripper_close_threshold=0.5,
+    vmin=None,
+    vmax=None,
 ):
     """Compute and plot the Jacobian block ∂a_{action_idx} / ∂z_{noise_idx}.
 
@@ -496,6 +514,8 @@ def jacobian_test(
         gripper_close_threshold : threshold on the gripper action dimension
                           above which it is considered "closing" (default
                           0.5), only used if gripper_close_mode=True
+        vmin            : fixed heatmap color lower limit (requires vmax)
+        vmax            : fixed heatmap color upper limit (requires vmin)
     Returns:
         mean_J_block : (A, D) averaged Jacobian block (full, before any crop),
                        or None if gripper_close_mode=True (outputs are saved
@@ -684,6 +704,8 @@ def jacobian_test(
                             plot=plot,
                             title_str=title_str,
                             task_id=task_id,
+                            vmin=vmin,
+                            vmax=vmax,
                         )
                         gripper_events.append({
                             "event_idx": event_idx,
@@ -786,6 +808,8 @@ def jacobian_test(
         plot=plot,
         title_str=title_str,
         task_id=task_id,
+        vmin=vmin,
+        vmax=vmax,
     )
 
     return mean_J_block
@@ -889,6 +913,20 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument(
+        "--vmin", type=float, default=None,
+        help=(
+            "Fixed heatmap color lower limit (requires --vmax; omit both "
+            "for auto-scale)"
+        ),
+    )
+    parser.add_argument(
+        "--vmax", type=float, default=None,
+        help=(
+            "Fixed heatmap color upper limit (requires --vmin; omit both "
+            "for auto-scale)"
+        ),
+    )
+    parser.add_argument(
         "--gripper_close_mode", type=int, default=0,
         help=(
             "If 1, switch to a different mode: instead of the usual "
@@ -931,4 +969,6 @@ if __name__ == "__main__":
         plot=bool(args.plot),
         gripper_close_mode=bool(args.gripper_close_mode),
         gripper_close_threshold=args.gripper_close_threshold,
+        vmin=args.vmin,
+        vmax=args.vmax,
     )

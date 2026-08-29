@@ -32,6 +32,7 @@ max_timesteps=100
 seed=0
 force=0   # set to 1 to re-evaluate runs whose output CSV already exists
 
+abs_mean=1 
 # --- Task 1: Task 28 ---
 # task1_ids=(
 #   "dsrl_pi05_libero_90_task28_2026_08_05_09_10_55_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual"
@@ -67,7 +68,14 @@ task3_task_id=59
 task_var_names=(task1_ids task2_ids task3_ids task4_ids)
 task_ids=("${task1_task_id}" "${task2_task_id}" "${task3_task_id}" "${task4_task_id}")
 
-mkdir -p plots/data/residual_norms
+if [[ "${abs_mean}" -eq 1 ]]; then
+  output_dir="plots/data/residual_abs_means"
+  abs_mean_flag="--abs_mean"
+else
+  output_dir="plots/data/residual_norms"
+  abs_mean_flag=""
+fi
+mkdir -p "${output_dir}"
 
 for block_idx in "${!task_var_names[@]}"; do
   declare -n _run_ids="${task_var_names[$block_idx]}"
@@ -77,7 +85,7 @@ for block_idx in "${!task_var_names[@]}"; do
     [[ -z "${run_id}" ]] && continue
 
     run_dir="${OUTPUT_DIR}/${run_id}"
-    output_csv="plots/data/residual_norms/${run_id}.csv"
+    output_csv="plots/data/residual_abs_means/${run_id}.csv"
 
     if [[ -f "${output_csv}" && "${force}" -ne 1 ]]; then
       echo "Skipping ${run_id} (${output_csv} already exists; set force=1 to re-evaluate)"
@@ -93,7 +101,8 @@ for block_idx in "${!task_var_names[@]}"; do
       --num_rollouts "${num_rollouts}" \
       --max_timesteps "${max_timesteps}" \
       --seed "${seed}" \
-      --output "${output_csv}"
+      --output "${output_csv}" \
+      ${abs_mean_flag}
   done
   unset -n _run_ids
 done

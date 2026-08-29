@@ -27,10 +27,10 @@ DEFAULT_EMA_HALFLIFE = 25_000
 DEFAULT_RUNS_PER_TASK = 4
 
 SUBPLOT_W = 7.0   # inches per subplot column
-SUBPLOT_H = 5.0   # inches per subplot row
+SUBPLOT_H = 4.5   # inches per subplot row
 LEGEND_ROW_H = 0.38       # inches per legend row at legend.fontsize=20
 LEGEND_PAD = 0.12         # padding within the legend strip
-LEGEND_GAP = 0.3          # fixed gap between legend and subplots (inches)
+LEGEND_GAP = 0.35          # fixed gap between legend and subplots (inches)
 
 
 def legend_top_margin(n_labels: int, ncol: int) -> tuple[float, float]:

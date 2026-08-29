@@ -67,7 +67,7 @@ done
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-suptitle="\$\pi_0\$ LIBERO-90"
+suptitle="FDTS-Chunk on \$\pi_0\$ LIBERO-90"
 output="plots/plots_two_tasks/pi0_libero90_fdts_chunk.svg"
 show_plot=0
 ymin=0.0
