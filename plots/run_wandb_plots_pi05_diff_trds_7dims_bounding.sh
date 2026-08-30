@@ -129,7 +129,7 @@ done
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-suptitle="\$\pi_{0.5}\$ LIBERO-90"
+suptitle="Bounded T-RDS-Residual on \$\pi_{0.5}\$ LIBERO-90"
 output="plots/plots_multi_tasks/pi05_libero90_7dims_diff_trds_4tasks_bounded.svg"
 show_plot=0
 ymin=0.0

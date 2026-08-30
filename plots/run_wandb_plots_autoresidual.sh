@@ -126,7 +126,7 @@ done
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-suptitle="\$\pi_{0.5}\$ LIBERO-90"
+suptitle="FDTS-Residual on \$\pi_{0.5}\$ LIBERO-90"
 output="plots/plots_multi_tasks/pi05_libero90_autoresidual_differentcolors.svg"
 show_plot=0
 ymin=0.0

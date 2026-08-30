@@ -26,7 +26,7 @@ task1_ids=(
   ""
   "dsrl_pi05_libero_90_task29_2026_08_03_19_53_57_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps_residualmlp"
   ""
-  ""
+  "dsrl_pi05_libero_90_task29_2026_08_25_02_54_32_0000--s-0_criticgpt_aractor_diff"
   ""
 )
 task1_title="Task 29"
@@ -45,7 +45,7 @@ task2_ids=(
   ""
   "dsrl_pi05_libero_90_task38_2026_08_04_08_04_14_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps_residualmlp"
   ""
-  ""
+  "dsrl_pi05_libero_90_task38_2026_08_25_04_11_51_0000--s-0_criticgpt_aractor_diff"
   ""
 )
 task2_title="Task 38"
@@ -79,7 +79,7 @@ task4_ids=(
   ""
   "dsrl_pi05_libero_90_task64_2026_08_04_08_02_11_0000--s-0_chunkrewardcriticactor_mlp_7dims_5vecs_2reps_residualmlp"
   ""
-  ""
+  "dsrl_pi05_libero_90_task64_2026_08_25_14_17_00_0000--s-0_criticgpt_aractor_diff"
   ""
 )
 task4_title="Task 64"
@@ -131,7 +131,7 @@ done
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-suptitle="\$\pi_{0.5}\$ LIBERO-90"
+suptitle="GT-RDS-Residual on \$\pi_{0.5}\$ LIBERO-90"
 output="plots/plots_multi_tasks/pi05_libero90_7dims_chunk_5vec_gtrds_rdsbaseline.svg"
 show_plot=0
 ymin=0.0

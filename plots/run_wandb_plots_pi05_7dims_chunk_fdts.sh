@@ -18,8 +18,8 @@ seeds_per_method=2
 task1_ids=(
   "dsrl_pi05_libero_90_task29_2026_08_23_08_05_46_0000--s-0_baseline_10replan"
   "dsrl_pi05_libero_90_task29_2026_08_22_03_31_18_0000--s-0_baseline" # 10 replan
-  "dsrl_pi05_libero_90_task29_2026_08_22_12_40_31_0000--s-0_baseline_7dims_10replan"
   "dsrl_pi05_libero_90_task29_2026_08_23_08_05_04_0000--s-0_baseline_7dims_10replan"
+  "dsrl_pi05_libero_90_task29_2026_08_22_12_40_31_0000--s-0_baseline_7dims_10replan"
   "dsrl_pi05_libero_90_task29_2026_07_31_08_06_09_0000--s-0_chunkrewardcriticactor_mlp_7dims"
   "dsrl_pi05_libero_90_task29_2026_08_13_07_44_58_0000--s-0_chunkrewardcriticactor_mlp_7dims"
   "dsrl_pi05_libero_90_task29_2026_06_21_10_25_52_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
@@ -108,7 +108,7 @@ done
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-suptitle="\$\pi_{0.5}\$ LIBERO-90"
+suptitle="T-RDS on \$\pi_{0.5}\$ LIBERO-90"
 output="plots/plots_multi_tasks/pi05_libero90_7dims_chunk_correct_names_10replan_fdts.svg"
 show_plot=0
 ymin=0.0

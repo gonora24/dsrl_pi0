@@ -19,28 +19,23 @@ import wandb
 from matplotlib.ticker import FuncFormatter
 
 from plot_fonts import PLOT_FONT_FAMILY
+from plot_layout import (
+    AXES_H,
+    AXES_W,
+    BOTTOM_PAD,
+    LEFT_PAD,
+    SUBPLOT_W,
+    XLABEL_H,
+    add_top_decorations,
+    apply_axes_grid,
+    figure_size,
+)
 
 DEFAULT_PROJECT = "DSRL_pi0_Libero"
 DEFAULT_METRIC = "evaluation/success_rate"
 DEFAULT_X_AXIS = "_step"
 DEFAULT_EMA_HALFLIFE = 50_000
-DEFAULT_RUNS_PER_TASK = 4
-
-SUBPLOT_W = 7.0   # inches per subplot column
-SUBPLOT_H = 4.5   # inches per subplot row
-LEGEND_ROW_H = 0.38       # inches per legend row at legend.fontsize=20
-LEGEND_PAD = 0.12         # padding within the legend strip
-LEGEND_GAP = 0.35          # fixed gap between legend and subplots (inches)
-
-
-def legend_top_margin(n_labels: int, ncol: int) -> tuple[float, float]:
-    """Return (legend_h, legend_gap) in inches for a top figure legend."""
-    if n_labels <= 0:
-        n_labels = 1
-    ncol = max(1, ncol)
-    n_legend_rows = math.ceil(n_labels / ncol)
-    legend_h = LEGEND_PAD + LEGEND_ROW_H * n_legend_rows
-    return legend_h, LEGEND_GAP
+DEFAULT_RUNS_PER_TASK = 2
 
 OKABE_ITO = [
     "#0072B2",  # blue
@@ -55,8 +50,10 @@ OKABE_ITO = [
 
 METHOD_COLORS = [
     "#D55E00",  # Baseline
+    "#0072B2", # FDTS-Chunk MLP Actor + MLP Critic (Chunk Reward)
+    '#009E73', # FDTS-Chunk MLP Actor + MLP Critic (Single Reward)
     "#00bed5",  # Method 2
-    "#d50053", # only for ablation overlapping
+    # "#d50053", # only for ablation overlapping
     "#0041d6",  # Method 3
     "#003756",  # Method 4  005889
 ]
@@ -68,7 +65,7 @@ RESIDUAL_COLORS = [
 ]
 
 DIM_COLORS = [
-    # "#D55E00",
+    "#D55E00",
     "#5e00d5",  # rds
     # "#d50077",  # t-rds
     "#005889",  # gt-rds
@@ -86,12 +83,12 @@ def setup_plot_style():
     )
     plt.rcParams.update({
         "font.family": PLOT_FONT_FAMILY,
-        "figure.titlesize": 30,
-        "axes.titlesize": 15,
-        "axes.labelsize": 13,
-        "xtick.labelsize": 10,
-        "ytick.labelsize": 10,
-        "legend.fontsize": 20,
+        "figure.titlesize": 32,
+        "axes.titlesize": 20,
+        "axes.labelsize": 15,
+        "xtick.labelsize": 12,
+        "ytick.labelsize": 12,
+        "legend.fontsize": 22,
         "lines.linewidth": 2.5,
         "axes.linewidth": 1.2,
         "savefig.dpi": 300,
@@ -374,20 +371,27 @@ def plot_multi_task(
     y_top = ymax_val + top_pad
 
     n_tasks = len(processed)
+    n_rows = 1
+    n_cols = n_tasks
+    # Always size the figure as if there are at least 2 columns so the suptitle
+    # and legend have enough horizontal room even for single-subplot figures.
+    n_fig_cols = max(n_cols, 2)
     n_legend_labels = len(all_labels)
     if sft_baselines is not None and any(v is not None for v in sft_baselines):
         n_legend_labels += 1
-    n_legend_cols = min(n_legend_labels, 1)
-    legend_h, legend_gap = legend_top_margin(n_legend_labels, n_legend_cols)
-    top_margin = legend_h + legend_gap
-    fig_w = n_tasks * SUBPLOT_W
-    fig_h = SUBPLOT_H + top_margin
-    top_frac = top_margin / fig_h
-    fig, axes = plt.subplots(1, n_tasks, figsize=(fig_w, fig_h), sharey=True)
-    axes = np.atleast_1d(axes)
+    n_legend_cols = min(n_legend_labels, 2)
+    fig_w, fig_h, suptitle_h, legend_h = figure_size(
+        n_rows,
+        n_fig_cols,
+        suptitle=bool(suptitle),
+        n_legend_labels=n_legend_labels,
+        n_legend_cols=n_legend_cols,
+    )
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(fig_w, fig_h), sharey=True)
+    axes = np.atleast_2d(axes).reshape(n_rows, n_cols)
 
     for idx, (df, title) in enumerate(zip(processed, task_titles)):
-        ax = axes[idx]
+        ax = axes[0, idx]
 
         # Only use labels that actually appear in this task's data
         task_labels = df["label"].drop_duplicates().tolist()
@@ -442,12 +446,7 @@ def plot_multi_task(
         ax.grid(which="major", color="0.90", linewidth=0.8)
         sns.despine(ax=ax)
 
-    # Shared figure title
-    if suptitle:
-        fig.suptitle(suptitle, y=1.01)
-
-    # Shared legend above the grid using proxy artists so it is independent
-    # of any individual axes legend state.
+    # Shared figure title and legend are added after axes positioning.
     from matplotlib.lines import Line2D
     _dashed_set = set(dashed_labels) if dashed_labels else set()
     legend_handles = [
@@ -464,29 +463,32 @@ def plot_multi_task(
     has_sft = sft_baselines is not None and any(v is not None for v in sft_baselines)
     if has_sft:
         legend_handles.insert(0,
-            Line2D([0], [0], color="0.4", linewidth=2.0, linestyle="--", label="$\pi_0$")
+            Line2D([0], [0], color="0.4", linewidth=2.0, linestyle="--", label="$\pi_{0.5}$")
         )
 
-    n_legend_cols = min(len(legend_handles), 1)
-    fig.tight_layout(rect=[0, 0, 1, 1 - top_frac])
-    fig.legend(
-        handles=legend_handles,
-        loc="upper center",
-        bbox_to_anchor=(0.5, 1 - legend_gap / fig_h),
-        ncol=n_legend_cols,
-        frameon=True,
-        fancybox=False,
-        framealpha=1.0,
-        edgecolor="0.6",
-        facecolor="white",
-        handlelength=2.2,
-        handletextpad=0.6,
-        columnspacing=1.2,
+    n_legend_cols = min(len(legend_handles), 2)
+    apply_axes_grid(axes, n_rows=n_rows, n_cols=n_cols, fig_w=fig_w, fig_h=fig_h)
+    # When the figure is wider than the actual subplot columns (e.g. 1 subplot
+    # in a 2-column-wide figure), re-center the axes horizontally.
+    if n_cols < n_fig_cols:
+        cell_left = (fig_w - n_cols * SUBPLOT_W) / 2
+        for col in range(n_cols):
+            left = (cell_left + col * SUBPLOT_W + LEFT_PAD) / fig_w
+            axes[0, col].set_position([left, (BOTTOM_PAD + XLABEL_H) / fig_h,
+                                       AXES_W / fig_w, AXES_H / fig_h])
+    add_top_decorations(
+        fig,
+        suptitle=suptitle,
+        legend_handles=legend_handles,
+        fig_h=fig_h,
+        suptitle_h=suptitle_h,
+        legend_h=legend_h,
+        n_legend_cols=n_legend_cols,
     )
 
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(output, bbox_inches="tight")
+        fig.savefig(output)
         print(f"Saved plot to {output}")
 
     if show or output is None:

@@ -129,7 +129,7 @@ done
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-suptitle="\$\pi_{0.5}\$ LIBERO-90"
+suptitle="Bounded GT-RDS-Residual on \$\pi_{0.5}\$ LIBERO-90"
 output="plots/plots_multi_tasks/pi05_libero90_7dims_chunk_5vec_gtrds_bounded.svg"
 show_plot=0
 ymin=0.0

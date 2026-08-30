@@ -19,28 +19,17 @@ import wandb
 from matplotlib.ticker import FuncFormatter
 
 from plot_fonts import PLOT_FONT_FAMILY
+from plot_layout import (
+    add_top_decorations,
+    apply_axes_grid,
+    figure_size,
+)
 
 DEFAULT_PROJECT = "DSRL_pi0_Libero"
 DEFAULT_METRIC = "evaluation/success_rate"
 DEFAULT_X_AXIS = "_step"
 DEFAULT_EMA_HALFLIFE = 50_000
 DEFAULT_RUNS_PER_TASK = 4
-
-SUBPLOT_W = 7.0   # inches per subplot column
-SUBPLOT_H = 4.5   # inches per subplot row
-LEGEND_ROW_H = 0.38       # inches per legend row at legend.fontsize=20
-LEGEND_PAD = 0.12         # padding within the legend strip
-LEGEND_GAP = 0.35          # fixed gap between legend and subplots (inches)
-
-
-def legend_top_margin(n_labels: int, ncol: int) -> tuple[float, float]:
-    """Return (legend_h, legend_gap) in inches for a top figure legend."""
-    if n_labels <= 0:
-        n_labels = 1
-    ncol = max(1, ncol)
-    n_legend_rows = math.ceil(n_labels / ncol)
-    legend_h = LEGEND_PAD + LEGEND_ROW_H * n_legend_rows
-    return legend_h, LEGEND_GAP
 
 OKABE_ITO = [
     "#0072B2",  # blue
@@ -84,18 +73,18 @@ RESIDUAL_COLORS = [
 
 DIM_COLORS = [
     # "#D55E00",
-    # "#5e00d5",  # rds
-    # "#d50077",  # t-rds
+    "#5e00d5",  # rds
+    "#d50077",  # t-rds
     # "#005889",  # gt-rds
     # "#00bed5",  # fdts chunk mlps
-    # "#e691a6",  # t-rds residual noise 
-    # "#560030",  # t-rds residual mean
-    "#0035f1",  # gt-rds residual noise
-    "#00bfd7",  # gt-rds residual distribution
+    "#e691a6",  # t-rds residual noise 
+    "#560030",  # t-rds residual mean
+    # "#0035f1",  # gt-rds residual noise
+    # "#00bfd7",  # gt-rds residual distribution
     # "#00a274",  # gt-rds residual mlp
     # "#005A50",  # fdts residual noise
-    # "#d91a1a", # t-rds residual noise bounded
-    # "#a34800", # t-rds residual mean bounded
+    "#d91a1a", # t-rds residual noise bounded
+    "#a34800", # t-rds residual mean bounded
     "#008a12", # gt-rds residual noise bounded
     "#7bbe00", # gt-rds residual distribution bounded
 ]
@@ -394,12 +383,14 @@ def plot_multi_task(
     n_legend_labels = len(all_labels)
     if sft_baselines is not None and any(v is not None for v in sft_baselines):
         n_legend_labels += 1
-    n_legend_cols = min(n_legend_labels, 2)
-    legend_h, legend_gap = legend_top_margin(n_legend_labels, n_legend_cols)
-    top_margin = legend_h + legend_gap
-    fig_w = n_cols * SUBPLOT_W
-    fig_h = n_rows * SUBPLOT_H + top_margin
-    top_frac = top_margin / fig_h
+    n_legend_cols = min(n_legend_labels, max(1, n_cols))
+    fig_w, fig_h, suptitle_h, legend_h = figure_size(
+        n_rows,
+        n_cols,
+        suptitle=bool(suptitle),
+        n_legend_labels=n_legend_labels,
+        n_legend_cols=n_legend_cols,
+    )
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(fig_w, fig_h), sharey=True)
     axes = np.atleast_2d(axes).reshape(n_rows, n_cols)
 
@@ -467,12 +458,7 @@ def plot_multi_task(
     for leftover_idx in range(len(task_titles), total_cells):
         axes[leftover_idx // axes.shape[1]][leftover_idx % axes.shape[1]].set_visible(False)
 
-    # Shared figure title
-    if suptitle:
-        fig.suptitle(suptitle, y=1.01)
-
-    # Shared legend above the grid using proxy artists so it is independent
-    # of any individual axes legend state.
+    # Shared figure title and legend are added after axes positioning.
     from matplotlib.lines import Line2D
     _dashed_set = set(dashed_labels) if dashed_labels else set()
     legend_handles = [
@@ -492,27 +478,21 @@ def plot_multi_task(
             Line2D([0], [0], color="0.4", linewidth=2.0, linestyle="--", label="$\pi_{0.5}$")
         )
 
-    n_legend_cols = min(len(legend_handles), 2)
-    fig.tight_layout(rect=[0, 0, 1, 1 - top_frac])
-
-    fig.legend(
-        handles=legend_handles,
-        loc="upper center",
-        bbox_to_anchor=(0.5, 1 - legend_gap / fig_h),
-        ncol=n_legend_cols,
-        frameon=False,
-        fancybox=False,
-        framealpha=1.0,
-        edgecolor="0.6",
-        facecolor="white",
-        handlelength=2.2,
-        handletextpad=0.6,
-        columnspacing=1.0,
+    n_legend_cols = min(len(legend_handles), max(1, n_cols))
+    apply_axes_grid(axes, n_rows=n_rows, n_cols=n_cols, fig_w=fig_w, fig_h=fig_h)
+    add_top_decorations(
+        fig,
+        suptitle=suptitle,
+        legend_handles=legend_handles,
+        fig_h=fig_h,
+        suptitle_h=suptitle_h,
+        legend_h=legend_h,
+        n_legend_cols=n_legend_cols,
     )
 
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(output, bbox_inches="tight")
+        fig.savefig(output)
         print(f"Saved plot to {output}")
 
     if show or output is None:

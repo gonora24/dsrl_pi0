@@ -24,7 +24,7 @@ task1_ids=(
   ""
   "dsrl_pi05_libero_90_task29_2026_08_15_17_58_03_0000--s-0_criticgpt_aractor_diff_mean_7dims"
   ""
-  ""
+  "dsrl_pi05_libero_90_task29_2026_08_25_02_54_32_0000--s-0_criticgpt_aractor_diff"
   ""
 )
 task1_title="Task 29"
@@ -40,7 +40,7 @@ task2_ids=(
   ""
   "dsrl_pi05_libero_90_task38_2026_08_15_18_05_51_0000--s-0_criticgpt_aractor_diff_mean_7dims"
   ""
-  ""
+  "dsrl_pi05_libero_90_task38_2026_08_25_04_11_51_0000--s-0_criticgpt_aractor_diff"
   ""
 )
 task2_title="Task 38"
@@ -70,7 +70,7 @@ task4_ids=(
   ""
   "dsrl_pi05_libero_90_task64_2026_08_22_13_02_49_0000--s-0_criticgpt_aractor_diff_mean_7dims"
   ""
-  ""
+  "dsrl_pi05_libero_90_task64_2026_08_25_14_17_00_0000--s-0_criticgpt_aractor_diff"
   ""
 )
 
@@ -103,6 +103,10 @@ all_task_ids=(
   "${task4_ids[@]}"
 )
 
+dashed_labels=(
+  "FDTS-Residual-Noise"
+)
+
 labels=()
 for task_ids_ref in task1_ids task2_ids task3_ids task4_ids; do
   declare -n _ids="$task_ids_ref"
@@ -115,7 +119,7 @@ done
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-suptitle="\$\pi_{0.5}\$ LIBERO-90"
+suptitle="T-RDS-Residual on \$\pi_{0.5}\$ LIBERO-90"
 output="plots/plots_multi_tasks/pi05_libero90_7dims_diff_trds_4tasks.svg"
 show_plot=0
 ymin=0.0
@@ -151,4 +155,5 @@ python3 plots/wandb_plots_multi_tasks.py \
   --max-steps 1000000 \
   --dim-colors 1 \
   --sft-baselines "${sft_baselines[@]}" \
+  --dashed-labels "${dashed_labels[@]}" \
   "${extra_args[@]}"

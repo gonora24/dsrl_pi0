@@ -68,12 +68,12 @@ def setup_plot_style():
 
     plt.rcParams.update({
         "font.family": PLOT_FONT_FAMILY,
-        "figure.titlesize": 30,
-        "axes.titlesize": 15,
-        "axes.labelsize": 13,
-        "xtick.labelsize": 10,
-        "ytick.labelsize": 10,
-        "legend.fontsize": 20,
+        "figure.titlesize": 32,
+        "axes.titlesize": 20,
+        "axes.labelsize": 15,
+        "xtick.labelsize": 12,
+        "ytick.labelsize": 12,
+        "legend.fontsize": 22,
         "lines.linewidth": 2.5,
         "axes.linewidth": 1.2,
         "savefig.dpi": 300,

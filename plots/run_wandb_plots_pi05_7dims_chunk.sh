@@ -16,9 +16,9 @@ entity="noragorhan-karlsruhe-institute-of-technology"
 seeds_per_method=2
 
 task1_ids=(
-  "dsrl_pi05_libero_90_task29_2026_07_31_08_03_38_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task29_2026_08_23_08_05_46_0000--s-0_baseline_10replan"
   "dsrl_pi05_libero_90_task29_2026_08_22_03_31_18_0000--s-0_baseline" # 10 replan
-  "dsrl_pi05_libero_90_task29_2026_07_31_08_04_03_0000--s-0_baseline_7dims"
+  "dsrl_pi05_libero_90_task29_2026_08_23_08_05_04_0000--s-0_baseline_7dims_10replan"
   "dsrl_pi05_libero_90_task29_2026_08_22_12_40_31_0000--s-0_baseline_7dims_10replan"
   "dsrl_pi05_libero_90_task29_2026_07_31_08_06_09_0000--s-0_chunkrewardcriticactor_mlp_7dims"
   "dsrl_pi05_libero_90_task29_2026_08_13_07_44_58_0000--s-0_chunkrewardcriticactor_mlp_7dims"
@@ -31,7 +31,7 @@ task2_ids=(
   "dsrl_pi05_libero_90_task38_2026_06_28_11_00_03_0000--s-0_baseline_10numqs_10replan"
   "dsrl_pi05_libero_90_task38_2026_06_28_04_37_47_0000--s-0_baseline_10numqs_10replan"
   "dsrl_pi05_libero_90_task38_2026_08_22_12_51_08_0000--s-0_baseline_7dims_10replan"
-  "dsrl_pi05_libero_90_task38_2026_07_31_08_02_05_0000--s-0_baseline_7dims"
+  "dsrl_pi05_libero_90_task38_2026_08_23_07_36_43_0000--s-0_baseline_7dims_10replan"
   "dsrl_pi05_libero_90_task38_2026_07_30_17_24_53_0000--s-0_chunkrewardcriticactor_mlp_7dims"
   "dsrl_pi05_libero_90_task38_2026_08_13_07_44_58_0000--s-0_chunkrewardcriticactor_mlp_7dims"
 )
@@ -41,8 +41,8 @@ task2_sft="0.61"
 task3_ids=(
   "dsrl_pi05_libero_90_task43_2026_06_28_05_42_04_0000--s-0_baseline_10numqs_10replan"
   "dsrl_pi05_libero_90_task43_2026_06_28_11_00_03_0000--s-0_baseline_10numqs_10replan"
-  "dsrl_pi05_libero_90_task43_2026_07_30_07_40_22_0000--s-0_baseline_only7dims"
-  "dsrl_pi05_libero_90_task43_2026_08_12_13_15_56_0000--s-0_baseline_7dims"
+  "dsrl_pi05_libero_90_task43_2026_08_23_07_33_50_0000--s-0_baseline_7dims_10replan"
+  "dsrl_pi05_libero_90_task43_2026_08_23_07_33_46_0000--s-0_baseline_7dims_10replan"
   "dsrl_pi05_libero_90_task43_2026_07_30_10_12_54_0000--s-0_chunkrewardcriticactor_mlp_7dims"
   "dsrl_pi05_libero_90_task43_2026_08_13_07_44_58_0000--s-0_chunkrewardcriticactor_mlp_7dims"
 )
@@ -53,7 +53,7 @@ task4_ids=(
   "dsrl_pi05_libero_90_task64_2026_06_28_04_53_13_0000--s-0_baseline_10numqs_10replan"
   "dsrl_pi05_libero_90_task64_2026_06_28_05_44_43_0000--s-0_baseline_10numqs_10replan"
   "dsrl_pi05_libero_90_task64_2026_08_22_13_14_27_0000--s-0_baseline_7dims_10replan"
-  "dsrl_pi05_libero_90_task64_2026_07_31_07_59_42_0000--s-0_baseline_7dims"
+  "dsrl_pi05_libero_90_task64_2026_08_23_07_33_50_0000--s-0_baseline_7dims_10replan"
   "dsrl_pi05_libero_90_task64_2026_07_30_15_25_17_0000--s-0_chunkrewardcriticactor_mlp_7dims"
   "dsrl_pi05_libero_90_task64_2026_07_30_17_25_51_0000--s-0_chunkrewardcriticactor_mlp_7dims"
 )
@@ -95,7 +95,7 @@ done
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-suptitle="\$\pi_{0.5}\$ LIBERO-90"
+suptitle="T-RDS on \$\pi_{0.5}\$ LIBERO-90"
 output="plots/plots_multi_tasks/pi05_libero90_7dims_chunk_correct_names_10replan.svg"
 show_plot=0
 ymin=0.0

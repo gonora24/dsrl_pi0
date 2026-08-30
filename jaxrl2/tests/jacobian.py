@@ -20,6 +20,10 @@ python -m jaxrl2.tests.jacobian \\
 import argparse
 import json
 import pathlib
+import sys
+
+# Allow importing shared plot helpers from the sibling plots/ package.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "plots"))
 
 import jax
 import jax.numpy as jnp
@@ -43,8 +47,13 @@ from jaxrl2.tests.gradient_sensitivity import (
 
 from libero.libero import benchmark
 
+from plot_fonts import PLOT_FONT_FAMILY
+
 plt.rcParams.update({
+    "font.family": PLOT_FONT_FAMILY,
     "mathtext.fontset": "cm",
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
 })
 
 
@@ -158,7 +167,7 @@ def plot_jacobian_block(
     noise_idx=0,
     title=None,
     ax=None,
-    cmap="coolwarm",
+    cmap="RdBu",
     num_actions=None,
     average_over_chunk=False,
     vmin=None,
@@ -204,12 +213,12 @@ def plot_jacobian_block(
     if title is None:
         if average_over_chunk:
             title = (
-                f"Jacobian  ∂a / ∂z  (averaged over action & noise chunk)"
+                f"Jacobian  ∂a / ∂w  (averaged over action & noise chunk)"
                 f"  (A={A}, D={D})"
             )
         else:
             title = (
-                f"Jacobian  ∂a_{action_idx} / ∂z_{noise_idx}"
+                f"Jacobian  ∂a_{action_idx} / ∂w_{noise_idx}"
                 f"  (A={A}, D={D})"
             )
 
@@ -241,7 +250,7 @@ def plot_jacobian_block(
     )
 
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label(r"$\partial a / \partial z$", fontsize=11)
+    cbar.set_label(r"$\partial a / \partial w$", fontsize=11)
 
     ax.set_xlabel(f"Noise dimensions", fontsize=11)
     ax.set_ylabel(f"Action dimensions", fontsize=11)

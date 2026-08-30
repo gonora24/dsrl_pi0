@@ -17,7 +17,8 @@
 # plots/data/residual_norms/<run_name>.csv.
 # ---------------------------------------------------------------------------
 
-data_dir="plots/data/residual_norms"
+data_dir="plots/data/residual_abs_means"
+data_dir="plots/data/residual_abs_means"
 
 # --- Task blocks: same run names / grouping as plots/run_eval_residual_norms.sh ---
 task1_ids=(
@@ -127,10 +128,12 @@ build_metric_map() {
   for i in "${!_src[@]}"; do
     local run_id="${_src[$i]}"
     [[ -z "${run_id}" ]] && continue
-    local metric="residual_norm"
+    local metric="residual_abs_mean"
+    local metric="residual_abs_mean"
     for k in "${diff_mean_indices[@]}"; do
       if [[ "$i" == "$k" ]]; then
-        metric="residual_mean_norm"
+        metric="residual_mean_abs_mean"
+        metric="residual_mean_abs_mean"
         break
       fi
     done
@@ -180,15 +183,19 @@ python3 plots/plot_residual_norms_multi_tasks.py \
   --task-titles "${task_titles[@]}" \
   --runs-per-task "${runs_per_task}" \
   --data-dir "${data_dir}" \
-  --metric residual_norm \
+  --metric residual_abs_mean \
+  --metric residual_abs_mean \
   --metric-map "${metric_map_str}" \
   --ymin 0.0 \
-  --ymax 5.0 \
+  --ymax 0.7 \
+  --ymax 0.7 \
   --ema-halflife "${ema_halflife}" \
-  --output "plots/plots_multi_tasks/residual_norm_mean.svg" \
+  --output "plots/plots_multi_tasks/residual_mean.svg" \
+  --output "plots/plots_multi_tasks/residual_mean.svg" \
   --labels "${labels_str}" \
   --suptitle "${suptitle}" \
-  --errorbar ci \
+  --errorbar none \
+  --errorbar none \
   --max-steps "${max_steps}" \
   --residual-colors 1 \
   "${extra_args[@]}"
@@ -199,14 +206,18 @@ python3 plots/plot_residual_norms_multi_tasks.py \
   --task-titles "${task_titles[@]}" \
   --runs-per-task "${runs_per_task}" \
   --data-dir "${data_dir}" \
-  --metric residual_log_std_norm \
+  --metric residual_log_std_abs_mean \
+  --metric residual_log_std_abs_mean \
   --ymin 0.0 \
-  --ymax 10.0 \
+  --ymax 2.0 \
+  --ymax 2.0 \
   --ema-halflife "${ema_halflife}" \
-  --output "plots/plots_multi_tasks/residual_norm_logstd.svg" \
+  --output "plots/plots_multi_tasks/residual_logstd_mean.svg" \
+  --output "plots/plots_multi_tasks/residual_logstd_mean.svg" \
   --labels "${labels_str}" \
   --suptitle "${suptitle}" \
-  --errorbar ci \
+  --errorbar none \
+  --errorbar none \
   --max-steps "${max_steps}" \
   --residual-colors 1 \
   "${extra_args[@]}"
