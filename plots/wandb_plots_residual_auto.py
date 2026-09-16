@@ -300,6 +300,7 @@ def plot_multi_task(
     errorbar: str = "ci",
     max_steps: float | None = None,
     sft_baselines: list[float | None] | None = None,
+    dashed_labels: list[str] | None = None,
 ) -> None:
     setup_plot_style()
 
@@ -379,9 +380,12 @@ def plot_multi_task(
         # Assign z-order/clipping to the method lines before adding the SFT
         # baseline line, so the loop below doesn't clobber its explicit z-order.
         n_lines = len(ax.lines)
+        _dashed = set(dashed_labels) if dashed_labels else set()
         for i, line in enumerate(ax.lines):
             line.set_zorder(3 + n_lines - i)
             line.set_clip_on(False)
+            if i < len(task_hue_order) and task_hue_order[i] in _dashed:
+                line.set_linestyle((0, (4, 1, 1, 1)))
 
         sft_value = sft_baselines[idx] if sft_baselines is not None else None
         if sft_value is not None:
@@ -408,8 +412,15 @@ def plot_multi_task(
         axes[leftover_idx // n_cols][leftover_idx % n_cols].set_visible(False)
 
     from matplotlib.lines import Line2D
+    _dashed_set = set(dashed_labels) if dashed_labels else set()
     legend_handles = [
-        Line2D([0], [0], color=palette[lbl], linewidth=2.5, label=lbl)
+        Line2D(
+            [0], [0],
+            color=palette[lbl],
+            linewidth=2.5,
+            linestyle=(0, (4, 1, 1, 1)) if lbl in _dashed_set else "solid",
+            label=lbl,
+        )
         for lbl in all_labels
     ]
 
@@ -576,6 +587,15 @@ def build_parser() -> argparse.ArgumentParser:
             "same order as --task-titles. Use an empty string to skip a task."
         ),
     )
+    parser.add_argument(
+        "--dashed-labels",
+        nargs="*",
+        default=[],
+        help=(
+            "Labels to render with a dash-dot line style. "
+            "Pass one or more label names, e.g. --dashed-labels 'Label A' 'Label B'."
+        ),
+    )
     return parser
 
 
@@ -654,6 +674,7 @@ def main(argv: list[str] | None = None) -> int:
         errorbar=args.errorbar,
         max_steps=args.max_steps,
         sft_baselines=sft_baselines,
+        dashed_labels=args.dashed_labels,
     )
     return 0
 

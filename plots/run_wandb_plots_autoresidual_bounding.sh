@@ -44,7 +44,7 @@ task3_ids=(
   "dsrl_pi05_libero_90_task59_2026_07_12_09_53_42_0000--s-0_criticgpt_diffaractor_10replan_clipaction_tanhresidual"
   "dsrl_pi05_libero_90_task59_2026_08_08_16_10_19_0000--s-0_criticgpt_aractor_diff_mean"
   "dsrl_pi05_libero_90_task59_2026_08_22_13_02_49_0000--s-0_criticgpt_aractor_diff_0.1bound"
-  ""
+  "dsrl_pi05_libero_90_task59_2026_08_23_17_16_15_0000--s-0_criticgpt_aractor_diff_mean_bounded0.2"
 ) 
 task3_title="Task 59"
 task3_sft="0.34"  # SFT baseline success rate for this task (0-1 scale); leave "" to skip
@@ -90,6 +90,10 @@ sft_baselines=(
   "${task4_sft}"
 )
 
+dashed_labels=(
+  "FDTS-Residual-Noise (bounded)"
+  "FDTS-Residual-Distribution (bounded)"
+)
 labels=()
 for task_ids_ref in task1_ids task2_ids task3_ids task4_ids; do
   declare -n _ids="$task_ids_ref"
@@ -102,7 +106,7 @@ done
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-suptitle="\$\pi_{0.5}\$ LIBERO-90"
+suptitle="FDTS-Residual Ablation on \$\pi_{0.5}\$ LIBERO-90"
 output="plots/plots_multi_tasks/pi05_libero90_autoresidual_bounded.svg"
 show_plot=0
 ymin=0.0
@@ -137,4 +141,5 @@ python3 plots/wandb_plots_residual_auto.py \
   --errorbar ci \
   --max-steps 800000 \
   --sft-baselines "${sft_baselines[@]}" \
+  --dashed-labels "${dashed_labels[@]}" \
   "${extra_args[@]}"

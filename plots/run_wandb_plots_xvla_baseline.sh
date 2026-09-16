@@ -82,7 +82,7 @@ done
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-suptitle="X-VLA LIBERO-90"
+suptitle="DSRL-SAC on X-VLA LIBERO-90"
 output="plots/plots_multi_tasks/xvla_libero90_baseline.svg"
 show_plot=0
 ymin=0.0
@@ -116,6 +116,6 @@ python3 plots/wandb_plots_multi_tasks.py \
   --suptitle "${suptitle}" \
   --errorbar ci \
   --max-steps 800000 \
-  --dim-colors 1 \
+  --dim-colors 0 \
   --sft-baselines "${sft_baselines[@]}" \
   "${extra_args[@]}"

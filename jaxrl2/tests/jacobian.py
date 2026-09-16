@@ -230,10 +230,8 @@ def plot_jacobian_block(
         fig = ax.get_figure()
 
     if vmin is None and vmax is None:
-        vabs = float(max(abs(J_block.min()), abs(J_block.max())))
-        if vabs == 0.0:
-            vabs = 1.0  # avoid degenerate colour scale for zero matrices
-        vmin, vmax = -vabs, vabs
+        vmin = float(J_block.min())
+        vmax = float(J_block.max())
     elif vmin is None or vmax is None:
         raise ValueError("Pass both vmin and vmax, or neither for auto-scale")
 
@@ -254,7 +252,7 @@ def plot_jacobian_block(
 
     ax.set_xlabel(f"Noise dimensions", fontsize=11)
     ax.set_ylabel(f"Action dimensions", fontsize=11)
-    ax.set_title(title, fontsize=15, pad=10)
+    ax.set_title(title, fontsize=20, pad=10)
 
     ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
     ax.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))

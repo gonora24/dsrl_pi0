@@ -1,5 +1,10 @@
 import argparse
 import pathlib
+import sys
+
+# Allow importing shared plot helpers from the sibling plots/ package.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "plots"))
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -20,8 +25,13 @@ from libero.libero import benchmark
 from libero.libero import get_libero_path
 from libero.libero.envs import OffScreenRenderEnv
 
+from plot_fonts import PLOT_FONT_FAMILY
+
 plt.rcParams.update({
+    "font.family": PLOT_FONT_FAMILY,
     "mathtext.fontset": "cm",
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
 })
 
 
@@ -123,7 +133,7 @@ def plot_sensitivity_matrix(
     C_a, C_l = mat.shape
 
     if ax is None:
-        fig, ax = plt.subplots(figsize=(4, 4))
+        fig, ax = plt.subplots(figsize=(max(5, C_l * 0.55 + 2), max(5, C_a * 0.55 + 2)))
     else:
         fig = ax.get_figure()
 
@@ -131,11 +141,11 @@ def plot_sensitivity_matrix(
                    interpolation="nearest")
 
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label("Sensitivity (Frobenius norm)", fontsize=8)
+    cbar.set_label("Sensitivity (Frobenius norm)", fontsize=10)
 
-    ax.set_xlabel(latent_label, fontsize=8)
-    ax.set_ylabel(action_label, fontsize=8)
-    ax.set_title(title, fontsize=11, pad=10)
+    ax.set_xlabel(latent_label, fontsize=10)
+    ax.set_ylabel(action_label, fontsize=10)
+    ax.set_title(title, fontsize=18, pad=10)
 
     ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
     ax.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
@@ -149,7 +159,7 @@ def plot_sensitivity_matrix(
                 ax.text(j, i, f"{v:.2f}", ha="center", va="center",
                         fontsize=7, color=color)
 
-    fig.tight_layout()
+    fig.tight_layout(pad=1.2)
     return fig, ax
 
 
@@ -309,7 +319,7 @@ def sensitivity_matrix_test(noise_actor_dir, libero_suite, task_id, N=100, check
         latent_label="Latent Timestep",
     )
     out_path = f"plots/plots/sensitivity_matrices/{filename}.svg"
-    fig.savefig(out_path)
+    fig.savefig(out_path, bbox_inches="tight")
     print(f"Saved {out_path}")
     return mean_mat
 

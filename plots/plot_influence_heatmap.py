@@ -30,7 +30,10 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import LogNorm, Normalize
 from matplotlib.patches import Rectangle
 
+from plot_fonts import PLOT_FONT_FAMILY
+
 plt.rcParams.update({
+    "font.family": PLOT_FONT_FAMILY,
     "mathtext.fontset": "cm",
 })
 
@@ -70,7 +73,7 @@ def load_metrics(path: pathlib.Path) -> dict:
 def plot_influence_heatmap(
     tasks,
     title=None,
-    cmap="viridis",
+    cmap="RdBu",
     log_scale=True,
     gap=0.4,
 ):
@@ -159,7 +162,7 @@ def plot_influence_heatmap(
         header = f"Task {task_id}" if task_id is not None else f"Task {t_idx}"
         ax.text(
             x0 + cell_size / 2, cell_size + 0.15, header,
-            ha="center", va="bottom", fontsize=13, 
+            ha="center", va="bottom", fontsize=17, 
             fontweight="bold",
         )
 
@@ -167,8 +170,8 @@ def plot_influence_heatmap(
     ax.set_ylim(-(D - 1) - cell_size - 0.2, cell_size + header_room)
     ax.set_xticks([])
     ax.set_yticks([-d - cell_size / 2 for d in range(D)])
-    ax.set_yticklabels([str(d) for d in range(D)], fontsize=8)
-    ax.set_ylabel("Latent dimension  d", fontsize=11)
+    ax.set_yticklabels([str(d) for d in range(D)], fontsize=12)
+    ax.set_ylabel("Latent dimension  d", fontsize=17)
 
     if title is None:
         suites = {t.get("libero_suite") for t in tasks if t.get("libero_suite")}
@@ -179,14 +182,14 @@ def plot_influence_heatmap(
         if len(checkpoints) == 1:
             parts.append(next(iter(checkpoints)))
         title = "Influence metric  " + "  ".join(parts) if parts else "Influence metric across tasks"
-    ax.set_title(title, fontsize=18, pad=15)
+    ax.set_title(title, fontsize=25, pad=15)
 
     for spine in ax.spines.values():
         spine.set_visible(False)
     ax.tick_params(length=0)
 
     cbar = fig.colorbar(mappable, ax=ax, fraction=0.08, pad=0.08 / max(N, 1) + 0.02)
-    cbar.set_label(r"$\mathrm{Infl}_d(w)$", fontsize=11)
+    cbar.set_label(r"$\mathrm{Infl}_d(w)$", fontsize=17)
 
     fig.tight_layout()
     return fig, ax
@@ -221,7 +224,7 @@ def main():
         help="Output filename stem (default: influence_heatmap_all_tasks).",
     )
     parser.add_argument(
-        "--cmap", type=str, default="viridis",
+        "--cmap", type=str, default="RdBu",
         help="Matplotlib colormap name (default: viridis).",
     )
     parser.add_argument(

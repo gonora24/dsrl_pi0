@@ -50,10 +50,10 @@ OKABE_ITO = [
 
 METHOD_COLORS = [
     "#D55E00",  # Baseline
-    "#0072B2", # FDTS-Chunk MLP Actor + MLP Critic (Chunk Reward)
-    '#009E73', # FDTS-Chunk MLP Actor + MLP Critic (Single Reward)
+    # "#0072B2", # FDTS-Chunk MLP Actor + MLP Critic (Chunk Reward)
+    # '#009E73', # FDTS-Chunk MLP Actor + MLP Critic (Single Reward)
     "#00bed5",  # Method 2
-    # "#d50053", # only for ablation overlapping
+    "#d50053", # only for ablation overlapping
     "#0041d6",  # Method 3
     "#003756",  # Method 4  005889
 ]
@@ -66,6 +66,7 @@ RESIDUAL_COLORS = [
 
 DIM_COLORS = [
     "#D55E00",
+    "#009E73", #na
     "#5e00d5",  # rds
     # "#d50077",  # t-rds
     "#005889",  # gt-rds
@@ -122,12 +123,17 @@ def nice_step_ticks(max_step: float) -> list[float]:
         1_000_000, 2_000_000, 2_500_000, 5_000_000,
     ]
 
-    # Add divisions of the maximum itself
+    # Add divisions of the maximum itself. For small max_step, rounding to 50k
+    # multiples can yield 0 and break tick generation after clip-to-shortest.
     for d in divisors:
         unit = max_step / d
-        nice_units.append(round(unit / 50_000) * 50_000)
+        rounded = round(unit / 50_000) * 50_000
+        if rounded > 0:
+            nice_units.append(rounded)
+        elif unit > 0:
+            nice_units.append(unit)
 
-    nice_units = sorted(set(nice_units))
+    nice_units = sorted({u for u in nice_units if u > 0})
 
     target_ticks = 5
     best_ticks = None
@@ -143,7 +149,7 @@ def nice_step_ticks(max_step: float) -> list[float]:
             best_score = score
             best_ticks = ticks
 
-    return best_ticks
+    return best_ticks if best_ticks is not None else [0.0, max_step]
 
 
 def time_weighted_ema(values: np.ndarray, steps: np.ndarray, halflife: float) -> np.ndarray:
@@ -237,8 +243,15 @@ def fetch_run_history(
             project = "DSRL_pi05_Libero"
             run_path = f"{entity}/{project}/{identifier}" if entity else f"{project}/{identifier}"
             run = api.run(run_path)
-        except wandb.errors.CommError as exc:
-            raise ValueError(f"Could not find run {identifier!r} in {project!r}.") from exc
+        except wandb.errors.CommError as exc1:
+            entity = "noragorhan-karlsruhe-institute-of-technology"
+            project = "DSRL_pi0_Libero"
+            run_path = f"{entity}/{project}/{identifier}" if entity else f"{project}/{identifier}"
+            run = api.run(run_path)
+        except wandb.errors.CommError as exc2:
+            raise ValueError(f"Could not find run {identifier!r} in {project!r}.") from exc1
+        except wandb.errors.CommError as exc2:
+            raise ValueError(f"Could not find run {identifier!r} in {project!r}.") from exc2
     metric2 = "evaluation/Reward >= 1"
     if metric not in run.summary:
         columns = [x_axis, metric2]

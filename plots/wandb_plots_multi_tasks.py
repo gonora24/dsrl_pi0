@@ -56,7 +56,7 @@ METHOD_COLORS = [
 ]
 
 RESIDUAL_COLORS = [
-    # "#D55E00",
+    "#D55E00",
     "#005A50",
     "#00a76a",
     "#89c200",

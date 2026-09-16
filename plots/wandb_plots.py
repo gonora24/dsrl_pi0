@@ -16,30 +16,26 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import wandb
+from matplotlib.lines import Line2D
 from matplotlib.ticker import FuncFormatter
 
 from plot_fonts import PLOT_FONT_FAMILY
+from plot_layout import (
+    AXES_H,
+    AXES_W,
+    BOTTOM_PAD,
+    LEFT_PAD,
+    SUBPLOT_W,
+    XLABEL_H,
+    add_top_decorations,
+    apply_axes_grid,
+    figure_size,
+)
 
 DEFAULT_PROJECT = "DSRL_pi0_Libero"
 DEFAULT_METRIC = "evaluation/success_rate"
 DEFAULT_X_AXIS = "_step"
 DEFAULT_EMA_HALFLIFE = 50_000
-
-SUBPLOT_W = 7.0   # inches per subplot column
-SUBPLOT_H = 4.5   # inches per subplot row
-LEGEND_ROW_H = 0.38       # inches per legend row at legend.fontsize=20
-LEGEND_PAD = 0.12         # padding within the legend strip
-LEGEND_GAP = 0.35          # fixed gap between legend and subplots (inches)
-
-
-def legend_top_margin(n_labels: int, ncol: int) -> tuple[float, float]:
-    """Return (legend_h, legend_gap) in inches for a top figure legend."""
-    if n_labels <= 0:
-        n_labels = 1
-    ncol = max(1, ncol)
-    n_legend_rows = math.ceil(n_labels / ncol)
-    legend_h = LEGEND_PAD + LEGEND_ROW_H * n_legend_rows
-    return legend_h, LEGEND_GAP
 
 # Publication-quality styling
 OKABE_ITO = [
@@ -53,11 +49,17 @@ OKABE_ITO = [
     "#000000",  # black
 ]
 
+# COLOR_MAP = {
+#     "DSRL-SAC (Baseline)": "#D55E00",  # orange 
+#     "RDS-NA": "#009E73",          # blue
+# }
+
 COLOR_MAP = {
     "DSRL-SAC (Baseline)": "#D55E00",  # orange 
-    "FDTS-Chunk MLP Actor + MLP Critic (hidden dim 2048)": "#00bed5",          # blue
-    "Chunked Critic Transformer + MLP Actor": "#56B4E9",    # sky blue
-    "Chunked Critic Transformer + Autoregressive Actor Transformer": "#009E73", # bluish green     
+    "FDTS-Chunk MLP Actor + MLP Critic": "#00bed5",          # blue
+    "FDTS-Chunk MLP Actor + MLP Critic (hidden dim 2048)": "#CC79A7",          # blue
+    "FDTS-Chunk MLP Actor + Transformer Critic": "#56B4E9",    # sky blue
+    # "FDTS-Chunk MLP Actor + Transformer Critic (Autoregressive)": "#009E73", # bluish green     
 }
 
 def setup_plot_style():
@@ -98,25 +100,17 @@ def format_training_steps(value: float, _pos: int) -> str:
 
 
 def nice_step_ticks(max_step: float) -> list[float]:
-    """Pick readable major ticks such as 0, 250K, 500K, 1M, 2M."""
     if max_step <= 0:
         return [0.0]
-
     nice_units = [
-        50_000,
-        100_000,
-        250_000,
-        500_000,
-        1_000_000,
-        2_000_000,
-        2_500_000,
-        5_000_000,
+        50_000, 100_000, 200_000, 250_000, 400_000, 500_000, 600_000, 750_000, 800_000,
+        1_000_000, 2_000_000, 2_500_000, 5_000_000,
     ]
-    target_ticks = 6
+    target_ticks = 5
     best_ticks = [0.0, max_step]
     for unit in nice_units:
         ticks = [float(i * unit) for i in range(int(max_step / unit) + 2) if i * unit <= max_step]
-        if 4 <= len(ticks) <= 10:
+        if target_ticks <= len(ticks) <= target_ticks + 2:
             return ticks
         if len(ticks) >= 4 and abs(len(ticks) - target_ticks) < abs(len(best_ticks) - target_ticks):
             best_ticks = ticks
@@ -214,7 +208,18 @@ def fetch_run_history(
     try:
         run = api.run(run_path)
     except wandb.errors.CommError as exc:
-        raise ValueError(f"Could not find run {identifier!r} in {project!r}.") from exc
+        try:
+            entity = "noragorhan-karlsruhe-institute-of-technology"
+            project = "DSRL_pi0_Libero"
+            run_path = f"{entity}/{project}/{identifier}" if entity else f"{project}/{identifier}"
+            run = api.run(run_path)
+        except wandb.errors.CommError as exc2:
+            entity = "noras-masterarbeit"
+            project = "DSRL_pi05_Libero"
+            run_path = f"{entity}/{project}/{identifier}" if entity else f"{project}/{identifier}"
+            run = api.run(run_path)
+        except wandb.errors.CommError as exc2:
+            raise ValueError(f"Could not find run {identifier!r} in {project!r}.") from exc2
 
     columns = [x_axis, metric]
     history = run.history(keys=columns, pandas=True)
@@ -299,20 +304,43 @@ def plot_success_rates(
     ylim: tuple[float, float] | None,
     ema_halflife: float,
     clip_to_shortest: bool,
+    max_steps: float | None = None,
+    sft_baseline: float | None = None,
 ) -> None:
     if clip_to_shortest:
         df = clip_to_shortest_run(df)
+    if max_steps is not None:
+        df = df.loc[df["step"] <= max_steps]
     df = apply_smoothing(df, ema_halflife)
 
     setup_plot_style()
-    n_runs = df["label"].nunique()
     hue_order = df["label"].drop_duplicates().tolist()
-    n_legend_cols = min(n_runs, 1)
-    legend_h, legend_gap = legend_top_margin(len(hue_order), n_legend_cols)
-    top_margin = legend_h + legend_gap
-    fig_h = SUBPLOT_H + top_margin
-    top_frac = top_margin / fig_h
-    fig, ax = plt.subplots(figsize=(SUBPLOT_W, fig_h))
+    palette = {
+        lbl: COLOR_MAP.get(lbl, OKABE_ITO[i % len(OKABE_ITO)])
+        for i, lbl in enumerate(hue_order)
+    }
+
+    ymin_val = 0.0 if ylim is None else ylim[0]
+    ymax_val = 1.0 if ylim is None else ylim[1]
+    bottom_pad = 0.02 if ymin_val <= 0.0 else 0.0
+    top_pad = 0.02 if ymax_val >= 1.0 else 0.0
+    y_bottom = ymin_val - bottom_pad
+    y_top = ymax_val + top_pad
+
+    n_rows, n_cols = 1, 1
+    n_fig_cols = max(n_cols, 2)
+    n_legend_labels = len(hue_order) + (1 if sft_baseline is not None else 0)
+    n_legend_cols = min(n_legend_labels, 2)
+    fig_w, fig_h, suptitle_h, legend_h = figure_size(
+        n_rows,
+        n_fig_cols,
+        suptitle=bool(title),
+        n_legend_labels=n_legend_labels,
+        n_legend_cols=n_legend_cols,
+    )
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(fig_w, fig_h), sharey=True)
+    axes = np.atleast_2d(axes).reshape(n_rows, n_cols)
+    ax = axes[0, 0]
 
     sns.lineplot(
         data=df,
@@ -320,72 +348,70 @@ def plot_success_rates(
         y="success_rate",
         hue="label",
         hue_order=hue_order,
-        palette=COLOR_MAP,
+        palette=palette,
         linewidth=2.5,
         ax=ax,
         legend=False,
     )
-    # linewidth was 1.8
-
-    max_step = float(df["step"].max())
-    ax.set_xlim(0, max_step)
-    ax.set_xticks(nice_step_ticks(max_step))
-    ax.xaxis.set_major_formatter(FuncFormatter(format_training_steps))
-
-    ax.set_xlabel("Gradient Steps")
-    ax.set_ylabel(metric_ylabel(metric))
-    ax.set_title(title or "Evaluation success rate", pad=15)
-    ax.tick_params(
-        direction="out",
-        width=1.2,
-        length=5,
-    )
-
-    ymin_val = 0.0 if ylim is None else ylim[0]
-    ymax_val = 1.0 if ylim is None else ylim[1]
-    bottom_pad = 0.02 if ymin_val <= 0.0 else 0.0
-    top_pad = 0.02 if ymax_val >= 1.0 else 0.0
-    ax.set_ylim(ymin_val - bottom_pad, ymax_val + top_pad)
-    ax.set_axisbelow(True)
-
-    ax.grid(
-        which="major",
-        color="0.90",
-        linewidth=0.8,
-    )
-    sns.despine(ax=ax)
 
     n_lines = len(ax.lines)
     for i, line in enumerate(ax.lines):
-        # First series on top so overlapping curves stay visible.
         line.set_zorder(3 + n_lines - i)
         line.set_clip_on(False)
 
-    from matplotlib.lines import Line2D
+    if sft_baseline is not None:
+        ax.axhline(y=sft_baseline, color="0.4", linestyle="--", linewidth=2.0, zorder=2)
+
+    # Use the requested cap (if any) as the axis ceiling rather than the
+    # actual last sampled step. wandb's history() sub-samples points, so
+    # the last row after filtering to `max_steps` can land slightly below
+    # it (e.g. 799000 instead of 800000), which would otherwise cause
+    # nice_step_ticks to silently drop the tick at `max_steps`.
+    axis_max = float(max_steps) if max_steps is not None else float(df["step"].max())
+    ax.set_xlim(0, axis_max)
+    ax.set_xticks(nice_step_ticks(axis_max))
+    ax.xaxis.set_major_formatter(FuncFormatter(format_training_steps))
+    ax.set_ylim(y_bottom, y_top)
+
+    ax.set_xlabel("Gradient Steps")
+    ax.set_ylabel(metric_ylabel(metric))
+    ax.tick_params(direction="out", width=1.2, length=4)
+    ax.set_axisbelow(True)
+    ax.grid(which="major", color="0.90", linewidth=0.8)
+    sns.despine(ax=ax)
+
     legend_handles = [
-        Line2D([0], [0], color=COLOR_MAP.get(lbl, OKABE_ITO[i % len(OKABE_ITO)]),
-               linewidth=2.5, label=lbl)
-        for i, lbl in enumerate(hue_order)
+        Line2D([0], [0], color=palette[lbl], linewidth=2.5, label=lbl)
+        for lbl in hue_order
     ]
-    fig.tight_layout(rect=[0, 0, 1, 1 - top_frac])
-    fig.legend(
-        handles=legend_handles,
-        loc="upper center",
-        bbox_to_anchor=(0.5, 1 - legend_gap / fig_h),
-        ncol=n_legend_cols,
-        frameon=True,
-        fancybox=False,
-        framealpha=1.0,
-        edgecolor="0.6",
-        facecolor="white",
-        handlelength=2.2,
-        handletextpad=0.6,
-        columnspacing=1.0,
+    if sft_baseline is not None:
+        legend_handles.insert(
+            0,
+            Line2D([0], [0], color="0.4", linewidth=2.0, linestyle="--", label="$\pi_{0.5}$"),
+        )
+
+    n_legend_cols = min(len(legend_handles), 2)
+    apply_axes_grid(axes, n_rows=n_rows, n_cols=n_cols, fig_w=fig_w, fig_h=fig_h)
+    if n_cols < n_fig_cols:
+        cell_left = (fig_w - n_cols * SUBPLOT_W) / 2
+        for col in range(n_cols):
+            left = (cell_left + col * SUBPLOT_W + LEFT_PAD) / fig_w
+            axes[0, col].set_position(
+                [left, (BOTTOM_PAD + XLABEL_H) / fig_h, AXES_W / fig_w, AXES_H / fig_h]
+            )
+    add_top_decorations(
+        fig,
+        suptitle=title,
+        legend_handles=legend_handles,
+        fig_h=fig_h,
+        suptitle_h=suptitle_h,
+        legend_h=legend_h,
+        n_legend_cols=n_legend_cols,
     )
 
     if output is not None:
         output.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(output, bbox_inches="tight")
+        fig.savefig(output)
         print(f"Saved plot to {output}")
 
     if show or output is None:
@@ -489,7 +515,31 @@ def build_parser() -> argparse.ArgumentParser:
             "(useful for fair comparisons when runs differ in length)."
         ),
     )
+    parser.add_argument(
+        "--max-steps",
+        type=float,
+        default=None,
+        help="Maximum number of steps to plot (default: None).",
+    )
+    parser.add_argument(
+        "--sft-baselines",
+        nargs="+",
+        default=None,
+        help=(
+            "Optional SFT baseline success-rate value to draw as a horizontal line. "
+            "Only the first value is used for single-plot mode."
+        ),
+    )
     return parser
+
+
+def parse_sft_baseline(raw: list[str] | None) -> float | None:
+    if raw is None:
+        return None
+    value = raw[0].strip()
+    if value == "":
+        return None
+    return float(value)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -498,6 +548,12 @@ def main(argv: list[str] | None = None) -> int:
 
     entity = configure_wandb_auth(args.entity)
     label_mapping = parse_label_mapping(args.labels)
+
+    try:
+        sft_baseline = parse_sft_baseline(args.sft_baselines)
+    except ValueError as exc:
+        print(f"Error: invalid --sft-baselines value: {exc}", file=sys.stderr)
+        return 1
 
     try:
         df = collect_histories(
@@ -521,6 +577,8 @@ def main(argv: list[str] | None = None) -> int:
         ylim=(args.ymin, args.ymax),
         ema_halflife=args.ema_halflife,
         clip_to_shortest=args.clip_to_shortest_run,
+        max_steps=args.max_steps,
+        sft_baseline=sft_baseline,
     )
     return 0
 

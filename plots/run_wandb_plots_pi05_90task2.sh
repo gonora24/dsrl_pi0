@@ -8,19 +8,22 @@ entity="noragorhan-karlsruhe-institute-of-technology"  # leave empty to use WAND
 # --- Runs to compare (W&B run ids / experiment ids, or local offline run dirs) ---
 identifiers=(
   "dsrl_pi05_libero_90_task43_2026_08_12_13_45_39_0000--s-0_baseline"
+  "dsrl_pi05_libero_90_task43_2026_06_29_01_06_06_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
   "dsrl_pi05_libero_90_task43_2026_08_15_18_13_05_0000--s-0_chunkrewardcriticactor_mlp"
 )
+sft_baselines="0.14"
 
 # --- Optional legend labels (comma-separated run_id=Label pairs; leave empty for auto labels) ---
 labels=(
   "${identifiers[0]}=DSRL-SAC (Baseline)"
-  "${identifiers[1]}=FDTS-Chunk MLP Actor + MLP Critic (hidden dim 2048)"
+  "${identifiers[1]}=FDTS-Chunk MLP Actor + MLP Critic"
+  "${identifiers[2]}=FDTS-Chunk MLP Actor + MLP Critic (hidden dim 2048)"
 )
 
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-title="\$\pi_{0.5}\$ LIBERO-90 Task 43"
+title="FDTS-Chunk on \$\pi_{0.5}\$ LIBERO-90 Task 43"
 output="plots/pi05_libero90_task43_hidden2048.svg"
 show_plot=0   # set to 1 to display interactively
 ymin=0.0
@@ -54,7 +57,9 @@ cmd+=(--x-axis "${x_axis}")
 cmd+=(--ymin "${ymin}")
 cmd+=(--ymax "${ymax}")
 cmd+=(--ema-halflife "${ema_halflife}")
-
+if [[ -n "${sft_baselines}" ]]; then
+  cmd+=(--sft-baselines "${sft_baselines}")
+fi
 if [[ "${clip_to_shortest_run}" == "1" ]]; then
   cmd+=(--clip-to-shortest-run)
 fi

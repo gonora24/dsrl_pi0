@@ -177,28 +177,24 @@ extra_args=()
 [[ ${show_plot} -eq 1 ]] && extra_args+=(--show)
 [[ ${clip_to_shortest_run} -eq 1 ]] && extra_args+=(--clip-to-shortest-run)
 
-echo "=== Plotting mean-residual norms (use_actor_diff + use_actor_diff_mean) ==="
-python3 plots/plot_residual_norms_multi_tasks.py \
-  --identifiers "${all_ids_combined[@]}" \
-  --task-titles "${task_titles[@]}" \
-  --runs-per-task "${runs_per_task}" \
-  --data-dir "${data_dir}" \
-  --metric residual_abs_mean \
-  --metric residual_abs_mean \
-  --metric-map "${metric_map_str}" \
-  --ymin 0.0 \
-  --ymax 0.7 \
-  --ymax 0.7 \
-  --ema-halflife "${ema_halflife}" \
-  --output "plots/plots_multi_tasks/residual_mean.svg" \
-  --output "plots/plots_multi_tasks/residual_mean.svg" \
-  --labels "${labels_str}" \
-  --suptitle "${suptitle}" \
-  --errorbar none \
-  --errorbar none \
-  --max-steps "${max_steps}" \
-  --residual-colors 1 \
-  "${extra_args[@]}"
+# echo "=== Plotting mean-residual norms (use_actor_diff + use_actor_diff_mean) ==="
+# python3 plots/plot_residual_norms_multi_tasks.py \
+#   --identifiers "${all_ids_combined[@]}" \
+#   --task-titles "${task_titles[@]}" \
+#   --runs-per-task "${runs_per_task}" \
+#   --data-dir "${data_dir}" \
+#   --metric residual_abs_mean \
+#   --metric-map "${metric_map_str}" \
+#   --ymin 0.0 \
+#   --ymax 0.7 \
+#   --ema-halflife "${ema_halflife}" \
+#   --output "plots/plots_multi_tasks/residual_mean_fdts.svg" \
+#   --labels "${labels_str}" \
+#   --suptitle "${suptitle}" \
+#   --errorbar none \
+#   --max-steps "${max_steps}" \
+#   --residual-colors 1 \
+#   "${extra_args[@]}"
 
 echo "=== Plotting log-std-residual norm (use_actor_diff_mean) ==="
 python3 plots/plot_residual_norms_multi_tasks.py \
@@ -207,16 +203,12 @@ python3 plots/plot_residual_norms_multi_tasks.py \
   --runs-per-task "${runs_per_task}" \
   --data-dir "${data_dir}" \
   --metric residual_log_std_abs_mean \
-  --metric residual_log_std_abs_mean \
   --ymin 0.0 \
   --ymax 2.0 \
-  --ymax 2.0 \
   --ema-halflife "${ema_halflife}" \
-  --output "plots/plots_multi_tasks/residual_logstd_mean.svg" \
-  --output "plots/plots_multi_tasks/residual_logstd_mean.svg" \
+  --output "plots/plots_multi_tasks/residual_logstd_mean_fdts.svg" \
   --labels "${labels_str}" \
   --suptitle "${suptitle}" \
-  --errorbar none \
   --errorbar none \
   --max-steps "${max_steps}" \
   --residual-colors 1 \

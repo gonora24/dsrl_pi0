@@ -11,19 +11,20 @@ identifiers=(
   "dsrl_pi05_libero_90_task43_2026_06_29_01_06_06_0000--s-0_chunkrewardcriticactor_mlp_10numqs_10replan_criticdim512_256_128"
   "dsrl_pi05_libero_90_task43_2026_06_29_08_55_16_0000--s-0_chunkrewardcriticactor_criticgpt_2numqs_10replan"
 )
+sft_baselines="0.14"
 
 # --- Optional legend labels (comma-separated run_id=Label pairs; leave empty for auto labels) ---
 labels=(
   "${identifiers[0]}=Baseline"
-  "${identifiers[1]}=Chunked MLP Critic + Actor"
-  "${identifiers[2]}=Chunked Critic Transformer + Actor MLP"
+  "${identifiers[1]}=FDTS-Chunk MLP Actor + MLP Critic"
+  "${identifiers[2]}=FDTS-Chunk MLP Actor + Transformer Critic"
 )
 
 # --- Plot settings ---
 metric="evaluation/success_rate"
 x_axis="_step"
-title="LIBERO-90 Task 43"
-output="plots/pi05_libero90_task43_success.png"
+title="FDTS-Chunk on \$\pi_{0.5}\$ LIBERO-90 Task 43"
+output="plots/pi05_libero90_task43_success.svg"
 show_plot=0   # set to 1 to display interactively
 ymin=0.0
 ymax=1.0
@@ -72,6 +73,10 @@ fi
 
 if [[ -n "${output}" ]]; then
   cmd+=(--output "${output}")
+fi
+
+if [[ -n "${sft_baselines[*]}" ]]; then
+  cmd+=(--sft-baselines "${sft_baselines[*]}")
 fi
 
 if [[ "${show_plot}" == "1" ]]; then
