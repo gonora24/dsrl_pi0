@@ -104,8 +104,6 @@ pip install huggingface-hub==0.36.0
 
 ## Usage
 
-> **TODO:** replace the placeholders below with your actual scripts / flags.
-
 **Baseline (original DSRL-SAC)**
 ```bash
 bash examples/scripts/run_libero_pi05.sh
